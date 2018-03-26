@@ -12,7 +12,7 @@ Secondary storage stores the following:
 * Disk volume snapshots — saved copies of VM data which can be used for data recovery or to create new templates
 
 
-### ROOT and DATA volumes:
+### ROOT and DATA volumes
 
 ROOT volumes correspond to the boot disk of a VM. They are created automatically by CloudStack during VM creation.
 ROOT volumes are created based on a system disk offering, corresponding to the service offering the user VM
@@ -26,7 +26,7 @@ DATA volumes are created based on a user-defined disk offering.
 
 The StorPool plugin consists of two parts:
 
-### KVM hypervisor plugin patch:
+### KVM hypervisor plugin patch
 
 Source directory: ./apache-cloudstack-4.8.0-src/plugins/hypervisors/kvm
 
@@ -38,7 +38,7 @@ disconnected (detached) by the iSCSI adaptor.
 NB! We need to build and install our own copy of the CloudStack KVM hypervisor plugin on each Agent host.
 
 
-### StorPool primary storage plugin:
+### StorPool primary storage plugin
 
 Source directory: ./apache-cloudstack-4.8.0-src/plugins/storage/volume
 
@@ -57,7 +57,11 @@ commands even when there is a CloudStack command that does pretty much the same.
 
 ## Build, Install, Setup
 
-### Build: go to the source directory and run: mvn -Pdeveloper -DskipTests install
+### Build
+
+Go to the source directory and run:
+
+    mvn -Pdeveloper -DskipTests install
 
 The resulting jar file is located in the target/ subdirectory.
 
@@ -69,11 +73,11 @@ Note: Need to build both the kvm plugin and the StorPool plugin proper.
 
 ### Install
 
-#### KVM hypervisor plugin:
+#### KVM hypervisor plugin
 
 For each CloudStack  agent: scp ./target/cloud-plugin-hypervisor-kvm-4.8.0.jar {AGENT_HOST}:/usr/share/cloudstack-agent/lib/
 
-#### StorPool primary storage plugin:
+#### StorPool primary storage plugin
 
 For each CloudStack agent: scp ./target/cloud-plugin-storage-volume-storpool-4.8.0.jar {AGENT_HOST}:/usr/share/cloudstack-agent/lib/
 For each CloudStack management: scp ./target/cloud-plugin-storage-volume-storpool-4.8.0.jar {MGMT_HOST}:/usr/share/cloudstack-management/webapps/client/WEB-INF/lib
@@ -83,14 +87,14 @@ Note: Agents should have access to StorPool mgmt, since attach/detach happens on
 
 ### Setup
 
-#### Setting up StorPool:
+#### Setting up StorPool
 
 The usual StorPool setup.
 
 Create a template to be used by CloudStack. Must set placeAll, placeTail and replication.
 No need to set default size, as volume size is determined by CloudStack during creation.
 
-#### Setting up a StorPool PRIMARY storage pool in CloudStack:
+#### Setting up a StorPool PRIMARY storage pool in CloudStack
 
 From the WEB UI, go to Infrastructure -> Primary Storage -> Add Primary Storage
 
@@ -232,7 +236,7 @@ This storage tag may be used later, when defining service or disk offerings.
 </table>
 
 
-### Creating ROOT volume from templates:
+### Creating ROOT volume from templates
 
 When creating the first volume based on the given template, the template is first downloaded (cached) to PRIMARY storage.
 This is mapped to a StorPool snapshot so, creating succecutive volumes from the same template does not incur additional 
