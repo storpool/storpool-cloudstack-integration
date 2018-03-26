@@ -1,0 +1,140 @@
+StorPool plugin files and what they're for:
+
+-- KVM hyoervisor plugin patch --
+0. com.cloud.hypervisor.kvm.storage.IscsiAdmStorageAdaptor:disconnectPhysicalDiskByPath - bugfix true->false
+
+	Needed so that StorPool volume detach is properly handled when corresponding VM is shut-down/migrated away
+	from the given host.
+
+
+-- Build infrastructure --
+1. ./pom.xml
+
+	Build infrastructure (maven). When updating integration to newer versions of CloudStack,
+	MUST update <version>4.8.0</version> to whatever the corrsponding CloudStack version is.
+	
+	For more info about this file, ask google about maven/pom.xml files and cf. the other CloudStack
+	pom.xml files.
+
+
+-- CloudStack Management side classes --
+N.B. All of the management side classes are SINGLETONS (yeah, good OOP design, I know), so be careful
+not to add any "instance" state in there...
+
+2. ./resources/META-INF/cloudstack/storage-volume-storpool
+	+ module.properties
+	+ spring-storage-volume-storpool-context.xml
+
+	Used by  theSpring framweork (dependency injection) to figure out which classes to instanciate
+	when the plugin is loaded on CloudStack management. These play no role in CloudStack agents.
+	
+	In our case these are:
+		- StorpoolPrimaryDataStoreProvider: This is the Management side entry point.
+		- StorpoolSnapshotStrategy: responsible for cleaning up StorPool snapshots, when corresponding CloudStack snapshots
+		are deleted from secondary storage.
+
+
+3. ./src/org/apache/cloudstack/storage/datastore/provider/StorpoolPrimaryDataStoreProvider.java
+
+	Management side entry point. Called when plugin is loaded.  Creates instances for all other classes
+	that constitute the CloudStack management side plugin and injects them into the Spring context.
+
+
+4. ./src/org/apache/cloudstack/storage/datastore/provider/StorpoolHostListener.java
+
+	Callbacks for Host connect/disconnect events.
+	Default host listener path:
+	{CLOUDSTACK_ROOT}/engine/storage/volume/src/org/apache/cloudstack/storage/datastore/provider/DefaultHostListener.java
+	
+	Cannot use default host listener, as it zeroes our pool's capacity each time a new host is
+	connected (CloudStack agent restart). Code was pretty much copied from there.
+	
+	NB. At present hostDisconnected in never called, so do not use it!
+
+
+5. ./src/org/apache/cloudstack/storage/datastore/lifecycle/StorpoolPrimaryDataStoreLifeCycle.java
+
+	Manages Primary Data Store (i.e. storage pool) lifecycle operations. Pretty much calls the corresponding
+	dataStoreHelper methods, that do all the work (again good OOP design in practice). Code "inspired" by other
+	primaey storage plugins.
+
+
+6. ./src/org/apache/cloudstack/storage/datastore/driver/StorpoolPrimaryDataStoreDriver.java
+
+	Management side storage driver that does most of the work. Notes:
+	* grantAccess/revokeAccess, which should handle attach/detach oprerations are pretty much useless at the
+	moment as they're not called in any of the relevant code paths. Thus attach/detach need to happen on the
+	Agent side.
+	
+	* createAsync is not called when the CloudStack volume is created, but when it is needed, i.e. when it is
+	attached to a VM (if DATA volumes), or when the VM is booted (for ROOT volumes).
+	
+	* takeSnapshot is called so that the Primary Storage plugin can create a snapshot on Primary. This is subsequently
+	copied to Secondary storage via the copyAsync mathod.
+	
+	* canCopy/copyAsync: one of the many mechanisms determining how data is copied btx. different data stores. Use this
+	and not the others since it consists of only two methods and thus all the complexity (ugliness) is kept in one place.
+	Called pretty much whenever data needs to be copied from/to StorPool, ex. downloading (caching) templates on primary
+	storage, backing-up snapshots on secondary storage, downloading volumes to secondary storage, creating volumes from
+	snapshots (currently supported only when snapshot is already present on primary, i.e. StorPool snapshots only).
+	The idea is to figyre out what the current operation is, and then send the appropriate StorPool copy command to one
+	of the agents, which is where the actual copying takes place.
+
+
+7. ./src/org/apache/cloudstack/storage/datastore/util/StorpoolUtil.java
+
+	Utility functions and classes. Basically a facade for talking with StorPool's API.
+	HTTP calls doen to Apache's HTTP client library.
+	Json serialization/deserialization done through Google's Gson library as this seemed the simplest one to use.
+	Both these are used by other parts of CloudStack as well.
+	
+	Note: Also used for "file log" on the management side (/var/log/cloudstack/management/storpool-plugin.log) which is
+	useful for debugging.
+	
+	Note: At present deleting a StorPool volume/snapshot performes a "detach all forced" operation first, so that
+	dangling attachments will not leave left-over volumes/snapshots.
+
+
+8. ./src/org/apache/cloudstack/storage/snapshot/StorpoolSnapshotStrategy.java
+
+	Responsible for cleaning up StorPool snapshots, when corresponding CloudStack snapshots
+	are deleted from secondary storage. This is done by plugging into the CloudStack snapshot deletion
+	process and deleting the StorPool snapshot as well.
+
+
+-- CloudStack Management to Agent communication --
+9. ./src/com/cloud/agent/api/storage:
+	+ StorpoolBackupSnapshotCommand.java
+	+ StorpoolCopyCommand.java
+	+ StorpoolCopyVolumeToSecondaryCommand.java
+	+ StorpoolDownloadTemplateCommand.java
+	+ StorpoolResizeVolumeCommand.java
+
+	Commands issued by StorPool management plugin to Agents.
+	
+	We create our own commands, so that we can integrate non-intrusively with the KVM
+	agent side plugin.
+
+
+-- CloudStack Agent side classes --
+10. ./src/com/cloud/hypervisor/kvm/resource/wrapper:
+	+ StorpoolBackupSnapshotCommandWrapper.java
+	+ StorpoolCopyVolumeToSecondaryCommandWrapper.java
+	+ StorpoolDownloadTemplateCommandWrapper.java
+	+ StorpoolResizeVolumeCommandWrapper.java
+
+	Command handler classes for the previously mentioned commands.
+
+
+11. ./src/com/cloud/hypervisor/kvm/storage:
+	+ StorpoolStorageAdaptor.java
+	This is the main agent side class: it is responsible for attaching/detaching StorPool's volumes and snapshots
+	so that they're usable by VMs or can be copied. It is also responsible for deleting left-over StorPool snapshots
+	corresponding to deleted CloudStack templates (method deletePhysicalDisk).
+	
+	This class also implements file logging (/var/log/cloudstach/agent/storpool-agent.log) useful for debugging.
+	
+	+ StorpoolStoragePool.java
+	Pretty much forwards all calls to the previous class (again good OOP design in practice).
+
+
