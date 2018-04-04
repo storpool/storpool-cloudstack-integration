@@ -206,8 +206,8 @@ This storage tag may be used later, when defining service or disk offerings.
 <tr>
   <td>Revert ROOT/DATA volume to snapshot</td>
   <td>revert to snapshot</td>
-  <td>NOT IMPLEMENTED</td>
-  <td>&nbsp;</td>
+  <td>management</td>
+  <td>revertSnapshot</td>
 </tr>
 <tr>
   <td>(Live) resize ROOT/DATA volume</td>

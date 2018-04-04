@@ -35,7 +35,7 @@ import com.cloud.storage.Storage.StoragePoolType;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.script.OutputInterpreter;
 import com.cloud.utils.script.Script;
-
+import com.cloud.agent.api.to.DiskTO;
 
 @StorageAdaptorInfo(storagePoolType=StoragePoolType.SharedMountPoint)
 public class StorpoolStorageAdaptor implements StorageAdaptor {
@@ -242,6 +242,12 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
         SP_LOG("StorpooolStorageAdaptor.disconnectPhysicalDisk: uuid=%s, pool=%s", volumeUuid, pool);
 
         log.debug(String.format("disconnectPhysicalDisk: uuid=%s, pool=%s", volumeUuid, pool));
+        return attachOrDetachVolume("detach", "volume", volumeUuid);
+    }
+
+    public boolean disconnectPhysicalDisk(Map<String, String> volumeToDisconnect) {
+        String volumeUuid = volumeToDisconnect.get(DiskTO.UUID);
+        SP_LOG("StorpooolStorageAdaptor.disconnectPhysicalDisk: map. uuid=%s", volumeUuid);
         return attachOrDetachVolume("detach", "volume", volumeUuid);
     }
 

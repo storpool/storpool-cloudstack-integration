@@ -67,17 +67,9 @@ import com.cloud.storage.ResizeVolumePayload;
 import com.cloud.storage.StorageManager;
 import com.cloud.storage.StoragePool;
 import com.cloud.storage.Storage.StoragePoolType;
-import com.cloud.storage.Volume;
 import com.cloud.storage.VolumeVO;
-//import com.cloud.storage.dao.DiskOfferingDao;
-//import com.cloud.storage.dao.SnapshotDao;
-//import com.cloud.storage.dao.VMTemplateDao;
 import com.cloud.storage.dao.VolumeDao;
-//import com.cloud.storage.snapshot.SnapshotManager;
-//import com.cloud.template.TemplateManager;
-//import com.cloud.vm.dao.VMInstanceDao;
 import com.cloud.utils.NumbersUtil;
-//import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.VirtualMachineManager;
 
 
@@ -89,14 +81,6 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     @Inject PrimaryDataStoreDao primaryStoreDao;
     @Inject EndPointSelector selector;
     @Inject ConfigurationDao configDao;
-//    @Inject DiskOfferingDao diskOfferingDao;
-//    @Inject VMTemplateDao templateDao;
-//    @Inject HostDao hostDao;
-//    @Inject VMInstanceDao vmDao;
-//    @Inject SnapshotDao snapshotDao;
-//    @Inject SnapshotManager snapshotMgr;
-//    @Inject TemplateManager templateManager;
-//    @Inject TemplateDataFactory templateDataFactory;
 
     @Override
     public Map<String, String> getCapabilities() {
@@ -114,11 +98,6 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     }
 
     @Override
-    public ChapInfo getChapInfo(VolumeInfo volumeInfo) {
-        return null;
-    }
-
-    @Override
     public long getUsedBytes(StoragePool storagePool) {
         return 0;
     }
@@ -126,11 +105,6 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     @Override
     public long getUsedIops(StoragePool storagePool) {
         return 0;
-    }
-
-    @Override
-    public long getVolumeSizeIncludingHypervisorSnapshotReserve(Volume volume, StoragePool pool) {
-        return volume.getSize();
     }
 
     @Override
@@ -151,6 +125,38 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
         storagePool.setUsedBytes(used < 0 ? 0 : (used > capacity ? capacity : used));
         primaryStoreDao.update(poolId, storagePool);
+    }
+
+    protected void _completeResponse(final CreateObjectAnswer answer, final String err, final AsyncCompletionCallback<CommandResult> callback)
+    {
+        final CreateCmdResult res = new CreateCmdResult(null, answer);
+        res.setResult(err);
+        callback.complete(res);
+    }
+
+    protected void completeResponse(final DataTO result, final AsyncCompletionCallback<CommandResult> callback)
+    {
+        _completeResponse(new CreateObjectAnswer(result), null, callback);
+    }
+
+    protected void completeResponse(final String err, final AsyncCompletionCallback<CommandResult> callback)
+    {
+        _completeResponse(new CreateObjectAnswer(err), err, callback);
+    }
+
+    @Override
+    public long getDataObjectSizeIncludingHypervisorSnapshotReserve(DataObject dataObject, StoragePool pool) {
+        return dataObject.getSize();
+    }
+
+    @Override
+    public long getBytesRequiredForTemplate(TemplateInfo templateInfo, StoragePool storagePool) {
+        return 0;
+    }
+
+    @Override
+    public ChapInfo getChapInfo(DataObject dataObject) {
+        return null;
     }
 
     @Override
@@ -538,8 +544,50 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     }
 
     @Override
-    public void revertSnapshot(SnapshotInfo snapshot, SnapshotInfo snapshotOnPrimaryStore, AsyncCompletionCallback<CommandResult> callback) {
-        StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.revertSnapshot");
-        throw new UnsupportedOperationException("Storpool revert snapshot not implemented");
+    public void revertSnapshot(final SnapshotInfo snapshot, final SnapshotInfo snapshotOnPrimaryStore, final AsyncCompletionCallback<CommandResult> callback) {
+        final String snapshotName = snapshot.getUuid();
+        final VolumeInfo vinfo = snapshot.getBaseVolume();
+        final String volumeName = vinfo.getUuid();
+        final String backupSnapshotName = volumeName + "_to_be_removed";
+        final Long size = snapshot.getSize();
+
+        StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.revertSnapshot: snapshot: name=%s, uuid=%s, volume: name=%s, uuid=%s", snapshot.getName(), snapshot.getUuid(), vinfo.getName(), vinfo.getUuid());
+
+        // Ignore the error that will almost certainly occur - no such snapshot
+        StorpoolUtil.snapshotDelete(backupSnapshotName);
+        SpApiResponse resp = StorpoolUtil.volumeSnapshot(volumeName, backupSnapshotName);
+        if (resp.getError() != null) {
+            final String err = String.format("Could not revert StorPool volume %s to the %s snapshot: could not create a temporary snapshot for the old volume: error %s", vinfo.getName(), snapshot.getName(), resp.getError());
+            completeResponse(err, callback);
+            return;
+        }
+
+        resp = StorpoolUtil.volumeDelete(volumeName);
+        if (resp.getError() != null) {
+            StorpoolUtil.snapshotDelete(backupSnapshotName);
+            final String err = String.format("Could not revert StorPool volume %s to the %s snapshot: could not delete the old volume: error %s", vinfo.getName(), snapshot.getName(), resp.getError());
+            completeResponse(err, callback);
+            return;
+        }
+
+        resp = StorpoolUtil.volumeCreate(volumeName, snapshotName, null, size);
+        if (resp.getError() != null) {
+            // Mmm, try to restore it first...
+            String err = String.format("Could not revert StorPool volume %s to the %s snapshot: could not create the new volume: error %s", vinfo.getName(), snapshot.getName(), resp.getError());
+            resp = StorpoolUtil.volumeCreate(volumeName, backupSnapshotName, null, size);
+            if (resp.getError() != null)
+                err = String.format("%s.  Also, could not even restore the old volume: %s", err, resp.getError());
+            else
+                StorpoolUtil.snapshotDelete(backupSnapshotName);
+            completeResponse(err, callback);
+            return;
+        }
+
+        StorpoolUtil.snapshotDelete(backupSnapshotName);
+
+        final VolumeObjectTO to = (VolumeObjectTO)vinfo.getTO();
+        to.setSize(size);
+        to.setPath(StorpoolUtil.devPath(volumeName));
+        completeResponse(to, callback);
     }
 }

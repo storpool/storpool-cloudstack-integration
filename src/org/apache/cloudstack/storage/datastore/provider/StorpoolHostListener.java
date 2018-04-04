@@ -98,8 +98,23 @@ public class StorpoolHostListener implements HypervisorHostListener {
     }
 
     @Override
+    public boolean hostAdded(long hostId) {
+        return true;
+    }
+
+    @Override
     public boolean hostDisconnected(long hostId, long poolId) {
         StorpoolUtil.spLog("hostDisconnected: hostId=%d, poolId=%d", hostId, poolId);
+        return true;
+    }
+
+    @Override
+    public boolean hostAboutToBeRemoved(long hostId) {
+        return true;
+    }
+
+    @Override
+    public boolean hostRemoved(long hostId, long clusterId) {
         return true;
     }
 }

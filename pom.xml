@@ -16,8 +16,8 @@
   <parent>
     <groupId>org.apache.cloudstack</groupId>
     <artifactId>cloudstack-plugins</artifactId>
-    <version>4.8.0</version>
-    <relativePath>../../cs/apache-cloudstack-4.8.0-src/plugins/pom.xml</relativePath>
+    <version>4.11.0.0</version>
+    <relativePath>../../git/plugins/pom.xml</relativePath>
   </parent>
   <dependencies>
     <dependency>
