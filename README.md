@@ -279,9 +279,7 @@ This is independent of StorPool as snapshots exist on secondary.
 
 ### Reverting volume to snapshot
 
-NOT IMPLEMENTED!
-
-TODO: Do we need this?
+The volume is backed up to a temporary snapshot, then removed and recreated from the specified snapshot (the one to revert to).  The temporary snapshot is then removed.
 
 ### Migrating volumes to other Storage pools
 
