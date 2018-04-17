@@ -54,6 +54,8 @@ dropping the jar file into the appropriate places. This is the reason why all St
 brx. the CloudStack management and agents (ex. data copying, volume resize) is done with StorPool specific
 commands even when there is a CloudStack command that does pretty much the same.
 
+Note that for the present the StorPool plugin may only be used for a single primary storage cluster; support for multiple clusters is planned.
+
 
 ## Build, Install, Setup
 
