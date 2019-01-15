@@ -259,7 +259,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             VolumeInfo vinfo = (VolumeInfo)data;
             String name = vinfo.getUuid();
 
-            StorpoolUtil.spLog("delete volume: name=%s, uuid=%s, isAttached=%s vm=%s, payload=%s", vinfo.getName(), vinfo.getUuid(), vinfo.isAttachedVM(), vinfo.getAttachedVmName(), vinfo.getpayload());
+            StorpoolUtil.spLog("delete volume: name=%s, uuid=%s, isAttached=%s vm=%s, payload=%s dataStore=%s", vinfo.getName(), vinfo.getUuid(), vinfo.isAttachedVM(), vinfo.getAttachedVmName(), vinfo.getpayload(), dataStore.getUuid());
 
             SpApiResponse resp = StorpoolUtil.volumeDelete(name);
             if (resp.getError() == null) {
@@ -467,7 +467,8 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     }
                 }
             } else if (srcType == DataObjectType.VOLUME && dstType == DataObjectType.VOLUME) {
-                if( srcData.getDataStore().getRole().isImageStore() ) {
+//                if( srcData.getDataStore().getRole().isImageStore() ) {
+                if( !(srcData.getDataStore().getDriver() instanceof StorpoolPrimaryDataStoreDriver ) ) {
                     // copy "VOLUME" to primary storage
                     VolumeInfo vinfo = (VolumeInfo)dstData;
                     String name = vinfo.getUuid();
@@ -487,16 +488,22 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         cmd = new StorpoolDownloadVolumeCommand(srcData.getTO(), dstTO, getTimeout(Config.PrimaryStorageDownloadWait), VirtualMachineManager.ExecuteInSequence.value());
 
                         EndPoint ep = selector.select(srcData, dstData);
+
+                        if( ep == null) {
+                            StorpoolUtil.spLog("select(srcData, dstData) returned NULL. trying srcOnly");
+                            ep = selector.select(srcData); // Storpool is zone
+                        }
                         if (ep == null) {
                             err = "No remote endpoint to send command, check if host or ssvm is down?";
                         } else {
+                            StorpoolUtil.spLog("Sending command to %s", ep.getHostAddr());
                             answer = ep.sendMessage(cmd);
-                        }
 
-                        if (answer != null && answer.getResult()) {
-                            // successfully downloaded volume to primary storage
-                        } else {
-                            err = answer != null ? answer.getDetails() : "Unknown error while downloading template. Null answer returned.";
+                            if (answer != null && answer.getResult()) {
+                                // successfully downloaded volume to primary storage
+                            } else {
+                                err = answer != null ? answer.getDetails() : "Unknown error while downloading volume. Null answer returned.";
+                            }
                         }
 
                         if (err != null) {
@@ -518,6 +525,10 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         cmd = new StorpoolCopyVolumeToSecondaryCommand(srcTO, dstData.getTO(), getTimeout(Config.CopyVolumeWait), VirtualMachineManager.ExecuteInSequence.value());
 
                         EndPoint ep = selector.select(srcData, dstData);
+                        if( ep == null ) {
+                            ep = selector.select(dstData);
+                        }
+
                         if (ep == null) {
                             err = "No remote endpoint to send command, check if host or ssvm is down?";
                         } else {

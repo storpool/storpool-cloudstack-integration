@@ -20,10 +20,11 @@
 package com.cloud.hypervisor.kvm.resource.wrapper;
 
 import java.io.File;
-import org.apache.commons.io.FileUtils;
+//import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 
 import org.apache.cloudstack.storage.command.CopyCmdAnswer;
+import org.apache.cloudstack.storage.to.PrimaryDataStoreTO;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.cloudstack.utils.qemu.QemuImg;
 import org.apache.cloudstack.utils.qemu.QemuImg.PhysicalDiskFormat;
@@ -33,6 +34,7 @@ import com.cloud.agent.api.storage.StorpoolCopyVolumeToSecondaryCommand;
 import com.cloud.agent.api.to.DataStoreTO;
 import com.cloud.agent.api.to.NfsTO;
 import com.cloud.hypervisor.kvm.resource.LibvirtComputingResource;
+import com.cloud.hypervisor.kvm.storage.KVMPhysicalDisk;
 import com.cloud.hypervisor.kvm.storage.KVMStoragePool;
 import com.cloud.hypervisor.kvm.storage.KVMStoragePoolManager;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
@@ -64,29 +66,34 @@ public final class StorpoolCopyVolumeToSecondaryCommandWrapper extends CommandWr
             final QemuImgFile srcFile = new QemuImgFile(srcPath, PhysicalDiskFormat.RAW);
 
             final DataStoreTO dstDataStore = dst.getDataStore();
-            if (!(dstDataStore instanceof NfsTO)) {
-                return new CopyCmdAnswer("Download Storpool volume: Only NFS secondary supported at present!");
+
+            final KVMStoragePoolManager poolMgr = libvirtComputingResource.getStoragePoolMgr();
+
+            KVMStoragePool destPool;
+            if( dstDataStore instanceof NfsTO ) {
+                destPool = storagePoolMgr.getStoragePoolByURI(dstDataStore.getUrl());
+            } else if( dstDataStore instanceof PrimaryDataStoreTO ) {
+                PrimaryDataStoreTO primaryDst = (PrimaryDataStoreTO)dstDataStore;
+                destPool = poolMgr.getStoragePool(primaryDst.getPoolType(), dstDataStore.getUuid());
+            } else {
+                return new CopyCmdAnswer("Don't know how to copy to " + dstDataStore.getClass().getName() + ", " + dst.getPath() );
             }
 
-            secondaryPool = storagePoolMgr.getStoragePoolByURI(dstDataStore.getUrl());
+            KVMPhysicalDisk newDisk = destPool.createPhysicalDisk(dst.getName(), dst.getProvisioningType(), src.getSize());
 
-            final String dstDir = secondaryPool.getLocalPath() + File.separator + dst.getPath();
-            FileUtils.forceMkdir(new File(dstDir));
+            String destPath = newDisk.getPath();
+            PhysicalDiskFormat destFormat = newDisk.getFormat();
 
-            final String dstPath = dstDir + File.separator + dst.getName();
-            final QemuImgFile dstFile = new QemuImgFile(dstPath, PhysicalDiskFormat.RAW);
+            QemuImgFile destFile = new QemuImgFile(destPath, destFormat);
+            QemuImg qemu = new QemuImg(cmd.getWaitInMillSeconds());
+            qemu.convert(srcFile, destFile);
 
-            final QemuImg qemu = new QemuImg(cmd.getWaitInMillSeconds());
-            qemu.convert(srcFile, dstFile);
-
-            final File file = new File(dstPath);
+            final File file = new File(destPath);
             final long size = file.exists() ? file.length() : 0;
 
-            final VolumeObjectTO volOnSecondary = new VolumeObjectTO();
-            volOnSecondary.setPath(dst.getPath() + File.separator + dst.getName());
-            volOnSecondary.setSize(size);
-
-            return new CopyCmdAnswer(volOnSecondary);
+            dst.setPath(newDisk.getPath());
+            dst.setSize(size);
+            return new CopyCmdAnswer(dst);
         } catch (final Exception e) {
             final String error = "Failed to copy volume to secondary storage: " + e.getMessage();
             s_logger.debug(error);
