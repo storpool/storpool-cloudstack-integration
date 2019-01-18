@@ -1,0 +1,2 @@
+#
+docker images --format '{{.ID}}' 'storpool/centos-cs-maven' | xargs -r docker rmi

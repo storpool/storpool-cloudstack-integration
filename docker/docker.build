@@ -1,0 +1,4 @@
+#
+docker build -f Dockerfile \
+ --rm \
+ -t storpool/centos-cs-maven:7-4.11.2.0 .

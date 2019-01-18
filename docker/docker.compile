@@ -1,0 +1,6 @@
+#
+docker run -it \
+ --rm  \
+ -v $(pwd)/../:/src \
+ storpool/centos-cs-maven:7-4.11.2.0 \
+ mvn -Pdeveloper -DskipTests clean install
