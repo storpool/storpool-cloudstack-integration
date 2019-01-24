@@ -23,6 +23,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.sql.Timestamp;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -74,12 +77,26 @@ public class StorpoolUtil {
         }
     }
 
-    private static PrintWriter spLogFile = spLogFileInitialize();
+    private static final File spLogFile = new File("/var/log/cloudstack/management/storpool-plugin.log");
+    private static PrintWriter spLogPrinterWriter = spLogFileInitialize();
 
     private static PrintWriter spLogFileInitialize() {
         try {
             log.info("INITIALIZE SP-LOG_FILE");
-            return new PrintWriter("/var/log/cloudstack/management/storpool-plugin.log");
+            if (spLogFile.exists()) {
+                final SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
+                final Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+                final File spLogFileRename = new File(spLogFile + "-" + sdf.format(timestamp));
+                final boolean ret = spLogFile.renameTo(spLogFileRename);
+                if (!ret) {
+                    log.warn("Unable to rename" + spLogFile + " to " + spLogFileRename);
+                } else {
+                    log.debug("Renamed " + spLogFile + " to " + spLogFileRename);
+                }
+            } else {
+                spLogFile.getParentFile().mkdirs();
+            }
+            return new PrintWriter(spLogFile);
         } catch (Exception e) {
             log.info("INITIALIZE SP-LOG_FILE: " + e.getMessage());
             throw new RuntimeException(e);
@@ -87,9 +104,12 @@ public class StorpoolUtil {
     }
 
     public static void spLog(String fmt, Object... args) {
-        final String line = String.format(fmt, args);
-        spLogFile.println(line);
-        spLogFile.flush();
+        spLogPrinterWriter.println(String.format(fmt, args));
+        spLogPrinterWriter.flush();
+        if ( spLogFile.length() > 107374182400L ) {
+            spLogPrinterWriter.close();
+            spLogPrinterWriter = spLogFileInitialize();
+        }
     }
 
 
