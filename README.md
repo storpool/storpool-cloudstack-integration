@@ -18,7 +18,7 @@ ROOT volumes correspond to the boot disk of a VM. They are created automatically
 ROOT volumes are created based on a system disk offering, corresponding to the service offering the user VM
 is based on. We may change the ROOT volume disk offering but only to another system created disk offering.
 
-DATA volumes correspond to additional disks. These can be created by usera and then attached/detached to VMs.
+DATA volumes correspond to additional disks. These can be created by users and then attached/detached to VMs.
 DATA volumes are created based on a user-defined disk offering.
 
 
@@ -31,30 +31,31 @@ The StorPool plugin consists of two parts:
 Source directory: ./apache-cloudstack-4.8.0-src/plugins/hypervisors/kvm
 
 This is due to a bug in com.cloud.hypervisor.kvm.storage.IscsiAdmStorageAdaptor:disconnectPhysicalDiskByPath().
-Otherwise may have dangling attachments. This fix should be pushed upstream to CloudStack.
-It is a one line patch: return false in place of true, as the device in question is not iSCSI, thus it is not
-disconnected (detached) by the iSCSI adaptor.
+Otherwise may have dangling attachments. It is a one line patch: return false in place of true, as the device
+in question is not iSCSI, thus it is not disconnected (detached) by the iSCSI adaptor.
 
 NB! We need to build and install our own copy of the CloudStack KVM hypervisor plugin on each Agent host.
 
+The issue was fixed upstream on 14 December 2019 https://github.com/apache/cloudstack/commit/bf209405e7d60b6a5abf87677d368c429359d98a
 
 ### StorPool primary storage plugin
 
 Source directory: ./apache-cloudstack-4.8.0-src/plugins/storage/volume
 
 There is one plugin for both the CloudStack management and agents, in the hope that having all the source
-in one place will ease development and maintanance. The plugin itself though is separated into two mainly
+in one place will ease development and maintenance. The plugin itself though is separated into two mainly
 independent parts:
 
   * ./src/com/... directory tree: agent related classes and commands send from management to agent
   * ./src/org/... directory tree: management related classes
 
-The plugin is intented to be self contained and non-intrusive, thus ideally deploying it would consist of only
+The plugin is intended to be self contained and non-intrusive, thus ideally deploying it would consist of only
 dropping the jar file into the appropriate places. This is the reason why all StorPool related communication
-brx. the CloudStack management and agents (ex. data copying, volume resize) is done with StorPool specific
-commands even when there is a CloudStack command that does pretty much the same.
+(ex. data copying, volume resize) is done with StorPool specific commands even when there is a CloudStack command
+that does pretty much the same.
 
-Note that for the present the StorPool plugin may only be used for a single primary storage cluster; support for multiple clusters is planned.
+Note that for the present the StorPool plugin may only be used for a single primary storage cluster; support for
+multiple clusters is planned.
 
 
 ## Build, Install, Setup
@@ -70,31 +71,40 @@ The resulting jar file is located in the target/ subdirectory.
 Note: checkstyle errors: before compilation a code style check is performed; if this fails compilation is aborted.
 In short: no trailing whitespace, indent using 4 spaces, not tabs, comment-out or remove unused imports.
 
-Note: Need to build both the kvm plugin and the StorPool plugin proper.
+Note: Need to build both the KVM plugin and the StorPool plugin proper.
 
+#### Build using docker
+
+As alternative in the docker/ directory there are few scripts to create a building environment in a docker container.
+Follow the corresponding docker/README.md for further details.
 
 ### Install
 
-#### KVM hypervisor plugin
-
-For each CloudStack  agent: scp ./target/cloud-plugin-hypervisor-kvm-4.8.0.jar {AGENT_HOST}:/usr/share/cloudstack-agent/lib/
-
 #### StorPool primary storage plugin
 
-For each CloudStack agent: scp ./target/cloud-plugin-storage-volume-storpool-4.8.0.jar {AGENT_HOST}:/usr/share/cloudstack-agent/lib/
-For each CloudStack management: scp ./target/cloud-plugin-storage-volume-storpool-4.8.0.jar {MGMT_HOST}:/usr/share/cloudstack-management/webapps/client/WEB-INF/lib
+For each CloudStack management host:
 
-Note: Agents should have access to StorPool mgmt, since attach/detach happens on the agent. This is CloudStack design issue, can't do much about it.
+```bash
+scp ./target/cloud-plugin-storage-volume-storpool-{version}.jar {MGMT_HOST}:/usr/share/cloudstack-management/lib/
+```
 
+For each CloudStack agent host:
+
+```bash
+scp ./target/cloud-plugin-storage-volume-storpool-{version}.jar {AGENT_HOST}:/usr/share/cloudstack-agent/plugins/
+```
+
+Note: Agents should have access to the StorPool management API, since attach and detach operations happens on the agent.
+This is a CloudStack design issue, can't do much about it.
 
 ### Setup
 
 #### Setting up StorPool
 
-The usual StorPool setup.
+Perform the StorPool installation following the StorPool Installation Guide.
 
-Create a template to be used by CloudStack. Must set placeAll, placeTail and replication.
-No need to set default size, as volume size is determined by CloudStack during creation.
+Create a template to be used by CloudStack. Must set *placeHead*, *placeAll*, *placeTail* and *replication*.
+No need to set default volume size because it is determined by the CloudStack disks and services offering.
 
 #### Setting up a StorPool PRIMARY storage pool in CloudStack
 
@@ -105,10 +115,10 @@ Hypervisor: select KVM
 Zone: pick appropriate zone.
 Name: user specified name
 
-Protocol: select SharedMountPoint
-Path: enter /dev/storpool (required argument, actually not needed in practice).
+Protocol: select *SharedMountPoint*
+Path: enter */dev/storpool* (required argument, actually not needed in practice).
 
-Provider: select StorPool
+Provider: select *StorPool*
 Managed: leave unchecked (currently ignored)
 Capacity Bytes: used for accounting purposes only. May be more or less than the actual StorPool template capacity.
 Capacity IOPS: currently not used (may use for max IOPS limitations on volumes from this pool).
@@ -257,7 +267,7 @@ DATA volumes are created by CloudStack the first time it is attached to a VM.
 
 ### Creating volume from snapshot
 
-Wwe use the fact that the snapshot already exists on PRIMARY, so no data is copied.
+We use the fact that the snapshot already exists on PRIMARY, so no data is copied.
 
 TODO: Currently volumes can be created only from StorPool snapshots that already exist on PRIMARY.
 TODO: Copy snapshots from SECONDARY to StorPool PRIMARY. Needed, when there is no corresponding StorPool snapshot.
@@ -285,11 +295,7 @@ The volume is backed up to a temporary snapshot, then removed and recreated from
 
 ### Migrating volumes to other Storage pools
 
-NOT IMPLEMENTED!
-
-TODO: Use cases: will both pools be StorPool, i.e. change template; or do we need to support migration to
-other storage providers as well. Implementation should be easy for the first case (mgmt only in copyAsync).
-For the second case we may need yet another command send to agent.
+Tested with storage pools on NFS only.
 
 ### BW/IOPS limitations
 

@@ -57,6 +57,7 @@ import com.cloud.agent.api.storage.StorpoolResizeVolumeCommand;
 import com.cloud.agent.api.storage.StorpoolBackupSnapshotCommand;
 import com.cloud.agent.api.storage.StorpoolCopyVolumeToSecondaryCommand;
 import com.cloud.agent.api.storage.StorpoolDownloadTemplateCommand;
+import com.cloud.agent.api.storage.StorpoolDownloadVolumeCommand;
 import com.cloud.agent.api.to.DataObjectType;
 import com.cloud.agent.api.to.DataStoreTO;
 import com.cloud.agent.api.to.DataTO;
@@ -258,7 +259,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             VolumeInfo vinfo = (VolumeInfo)data;
             String name = vinfo.getUuid();
 
-            StorpoolUtil.spLog("delete volume: name=%s, uuid=%s, isAttached=%s vm=%s, payload=%s", vinfo.getName(), vinfo.getUuid(), vinfo.isAttachedVM(), vinfo.getAttachedVmName(), vinfo.getpayload());
+            StorpoolUtil.spLog("delete volume: name=%s, uuid=%s, isAttached=%s vm=%s, payload=%s dataStore=%s", vinfo.getName(), vinfo.getUuid(), vinfo.isAttachedVM(), vinfo.getAttachedVmName(), vinfo.getpayload(), dataStore.getUuid());
 
             SpApiResponse resp = StorpoolUtil.volumeDelete(name);
             if (resp.getError() == null) {
@@ -466,31 +467,83 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     }
                 }
             } else if (srcType == DataObjectType.VOLUME && dstType == DataObjectType.VOLUME) {
-                // download volume - first copies to secondary
-                VolumeObjectTO srcTO = (VolumeObjectTO)srcData.getTO();
-                final String name = srcTO.getUuid();
-                final String tmpSnapName = String.format("tmp-for-download-%s", name);
+//                if( srcData.getDataStore().getRole().isImageStore() ) {
+                if( !(srcData.getDataStore().getDriver() instanceof StorpoolPrimaryDataStoreDriver ) ) {
+                    // copy "VOLUME" to primary storage
+                    VolumeInfo vinfo = (VolumeInfo)dstData;
+                    String name = vinfo.getUuid();
+                    Long size = vinfo.getSize();
+                    if(size == null || size == 0)
+                        size = 1L*1024*1024*1024;
+                    String templateName = dstData.getDataStore().getUuid();
 
-                final SpApiResponse resp = StorpoolUtil.volumeSnapshot(name, tmpSnapName);
-                if (resp.getError() == null) {
-                    srcTO.setPath(StorpoolUtil.devPath(tmpSnapName));
-                    cmd = new StorpoolCopyVolumeToSecondaryCommand(srcTO, dstData.getTO(), getTimeout(Config.CopyVolumeWait), VirtualMachineManager.ExecuteInSequence.value());
-
-                    EndPoint ep = selector.select(srcData, dstData);
-                    if (ep == null) {
-                        err = "No remote endpoint to send command, check if host or ssvm is down?";
+                    SpApiResponse resp = StorpoolUtil.volumeCreate(name, null, templateName, size);
+                    if (resp.getError() != null) {
+                        err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
                     } else {
-                        answer = ep.sendMessage(cmd);
-                    }
+                        VolumeObjectTO dstTO = (VolumeObjectTO)dstData.getTO();
+                        dstTO.setPath(StorpoolUtil.devPath(name));
+                        dstTO.setSize(size);
 
-                    final SpApiResponse resp2 = StorpoolUtil.snapshotDelete(tmpSnapName);
-                    if (resp2.getError() != null) {
-                        final String err2 = String.format("Failed to delete temporary StorPool snapshot %s. Error: %s", tmpSnapName, resp2.getError());
-                        log.error(err2);
-                        StorpoolUtil.spLog(err2);
+                        cmd = new StorpoolDownloadVolumeCommand(srcData.getTO(), dstTO, getTimeout(Config.PrimaryStorageDownloadWait), VirtualMachineManager.ExecuteInSequence.value());
+
+                        EndPoint ep = selector.select(srcData, dstData);
+
+                        if( ep == null) {
+                            StorpoolUtil.spLog("select(srcData, dstData) returned NULL. trying srcOnly");
+                            ep = selector.select(srcData); // Storpool is zone
+                        }
+                        if (ep == null) {
+                            err = "No remote endpoint to send command, check if host or ssvm is down?";
+                        } else {
+                            StorpoolUtil.spLog("Sending command to %s", ep.getHostAddr());
+                            answer = ep.sendMessage(cmd);
+
+                            if (answer != null && answer.getResult()) {
+                                // successfully downloaded volume to primary storage
+                            } else {
+                                err = answer != null ? answer.getDetails() : "Unknown error while downloading volume. Null answer returned.";
+                            }
+                        }
+
+                        if (err != null) {
+                            SpApiResponse resp3 = StorpoolUtil.volumeDelete(name);
+                            if (resp3.getError() != null) {
+                               log.warn(String.format("Could not clean-up Storpool volume %s. Error: %s", name, resp3.getError()));
+                            }
+                        }
                     }
                 } else {
-                    err = String.format("Failed to create temporary StorPool snapshot while trying to download volume %s (uuid %s). Error: %s", srcTO.getName(), srcTO.getUuid(), resp.getError());
+                    // download volume - first copies to secondary
+                    VolumeObjectTO srcTO = (VolumeObjectTO)srcData.getTO();
+                    final String name = srcTO.getUuid();
+                    final String tmpSnapName = String.format("tmp-for-download-%s", name);
+
+                    final SpApiResponse resp = StorpoolUtil.volumeSnapshot(name, tmpSnapName);
+                    if (resp.getError() == null) {
+                        srcTO.setPath(StorpoolUtil.devPath(tmpSnapName));
+                        cmd = new StorpoolCopyVolumeToSecondaryCommand(srcTO, dstData.getTO(), getTimeout(Config.CopyVolumeWait), VirtualMachineManager.ExecuteInSequence.value());
+
+                        EndPoint ep = selector.select(srcData, dstData);
+                        if( ep == null ) {
+                            ep = selector.select(dstData);
+                        }
+
+                        if (ep == null) {
+                            err = "No remote endpoint to send command, check if host or ssvm is down?";
+                        } else {
+                            answer = ep.sendMessage(cmd);
+                        }
+
+                        final SpApiResponse resp2 = StorpoolUtil.snapshotDelete(tmpSnapName);
+                        if (resp2.getError() != null) {
+                            final String err2 = String.format("Failed to delete temporary StorPool snapshot %s. Error: %s", tmpSnapName, resp2.getError());
+                            log.error(err2);
+                            StorpoolUtil.spLog(err2);
+                        }
+                    } else {
+                        err = String.format("Failed to create temporary StorPool snapshot while trying to download volume %s (uuid %s). Error: %s", srcTO.getName(), srcTO.getUuid(), resp.getError());
+                    }
                 }
             } else {
                 err = String.format("Unsupported copy operation from %s (type %s) to %s (type %s)", srcData.getUuid(), srcType, dstData.getUuid(), dstType);

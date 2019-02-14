@@ -16,7 +16,7 @@
   <parent>
     <groupId>org.apache.cloudstack</groupId>
     <artifactId>cloudstack-plugins</artifactId>
-    <version>4.11.0.0</version>
+    <version>4.11.2.0</version>
     <relativePath>../../git/plugins/pom.xml</relativePath>
   </parent>
   <dependencies>
@@ -35,6 +35,11 @@
       <artifactId>cloud-plugin-hypervisor-kvm</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>pl.project13.maven</groupId>
+      <artifactId>git-commit-id-plugin</artifactId>
+      <version>2.2.6</version>
+    </dependency>
   </dependencies>
   <build>
     <plugins>
@@ -51,6 +56,35 @@
             </goals>
           </execution>
         </executions>
+      </plugin>
+      <plugin>
+        <groupId>pl.project13.maven</groupId>
+        <artifactId>git-commit-id-plugin</artifactId>
+        <version>2.2.6</version>
+        <executions>
+          <execution>
+            <id>get-the-git-infos</id>
+            <goals>
+                <goal>revision</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <dotGitDirectory>${project.basedir}/.git</dotGitDirectory>
+          <prefix>git</prefix>
+          <verbose>false</verbose>
+          <generateGitPropertiesFile>true</generateGitPropertiesFile>
+          <generateGitPropertiesFilename>${project.build.outputDirectory}/git.properties</generateGitPropertiesFilename>
+          <format>json</format>
+          <excludeProperties>
+            <excludeProperty>git.*.email</excludeProperty>
+          </excludeProperties>
+          <gitDescribe>
+            <skip>false</skip>
+            <always>false</always>
+            <dirty>-dirty</dirty>
+          </gitDescribe>
+        </configuration>
       </plugin>
     </plugins>
   </build>
