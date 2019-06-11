@@ -25,6 +25,7 @@ import org.apache.log4j.Logger;
 import com.cloud.agent.api.StoragePoolInfo;
 import com.cloud.hypervisor.Hypervisor.HypervisorType;
 import com.cloud.storage.Storage.StoragePoolType;
+import com.cloud.storage.ScopeType;
 import com.cloud.storage.StoragePool;
 import com.cloud.storage.StoragePoolAutomation;
 
@@ -116,6 +117,9 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
     @Override
     public boolean attachCluster(DataStore store, ClusterScope scope) {
         log.debug("attachCluster");
+        if (!scope.getScopeType().equals(ScopeType.ZONE)) {
+            throw new UnsupportedOperationException("Only Zone-Wide scope is supported!");
+        }
         return true;
     }
 
