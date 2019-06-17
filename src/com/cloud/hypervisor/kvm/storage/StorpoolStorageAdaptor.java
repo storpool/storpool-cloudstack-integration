@@ -123,7 +123,7 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
         return false;
     }
 
-    private static String getVolumeNameFromPath(final String volumeUuid) {
+    public static String getVolumeNameFromPath(final String volumeUuid) {
         // maybe replace with regex match?
         if (!volumeUuid.startsWith("/dev/storpool/")) {
             return null;
