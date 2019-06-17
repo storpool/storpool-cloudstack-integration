@@ -64,6 +64,7 @@ import com.cloud.agent.api.to.DataTO;
 import com.cloud.agent.api.to.StorageFilerTO;
 import com.cloud.configuration.Config;
 import com.cloud.host.Host;
+import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.storage.ResizeVolumePayload;
 import com.cloud.storage.Storage.StoragePoolType;
 import com.cloud.storage.StorageManager;
@@ -257,8 +258,10 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         String err = null;
         if (data.getType() == DataObjectType.VOLUME) {
             VolumeInfo vinfo = (VolumeInfo)data;
-            String name = vinfo.getUuid();
-
+            String name = StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath());
+            if (name == null) {
+                name = vinfo.getUuid();
+            }
             StorpoolUtil.spLog("delete volume: name=%s, uuid=%s, isAttached=%s vm=%s, payload=%s dataStore=%s", vinfo.getName(), vinfo.getUuid(), vinfo.isAttachedVM(), vinfo.getAttachedVmName(), vinfo.getpayload(), dataStore.getUuid());
 
             SpApiResponse resp = StorpoolUtil.volumeDelete(name);
@@ -573,7 +576,12 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     public void takeSnapshot(SnapshotInfo snapshot, AsyncCompletionCallback<CreateCmdResult> callback) {
         String snapshotName = snapshot.getUuid();
         VolumeInfo vinfo = snapshot.getBaseVolume();
-        String volumeName = vinfo.getUuid();
+        String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath());
+        if (volumeName != null) {
+            StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriver.takeSnapshot volumename=%s ",volumeName);
+        }else {
+            throw new UnsupportedOperationException("The path should be: " + StorpoolUtil.SP_DEV_PATH);
+        }
 
         StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.takeSnapshot: snapshot: name=%s, uuid=%s, volume: name=%s, uuid=%s", snapshot.getName(), snapshot.getUuid(), vinfo.getName(), vinfo.getUuid());
 
