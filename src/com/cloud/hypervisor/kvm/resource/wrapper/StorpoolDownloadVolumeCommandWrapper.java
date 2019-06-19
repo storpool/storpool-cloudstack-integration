@@ -19,9 +19,9 @@
 
 package com.cloud.hypervisor.kvm.resource.wrapper;
 
+import static com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor.SP_LOG;
+
 import java.util.List;
-//import java.io.File;
-import org.apache.log4j.Logger;
 
 import org.apache.cloudstack.storage.command.CopyCmdAnswer;
 import org.apache.cloudstack.storage.to.PrimaryDataStoreTO;
@@ -29,6 +29,8 @@ import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.cloudstack.utils.qemu.QemuImg;
 import org.apache.cloudstack.utils.qemu.QemuImg.PhysicalDiskFormat;
 import org.apache.cloudstack.utils.qemu.QemuImgFile;
+//import java.io.File;
+import org.apache.log4j.Logger;
 
 import com.cloud.agent.api.storage.StorpoolDownloadVolumeCommand;
 import com.cloud.agent.api.to.DataStoreTO;
@@ -40,9 +42,6 @@ import com.cloud.hypervisor.kvm.storage.KVMStoragePoolManager;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.resource.CommandWrapper;
 import com.cloud.resource.ResourceWrapper;
-import com.cloud.storage.Storage.ImageFormat;
-
-import static com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor.SP_LOG;
 
 @ResourceWrapper(handles = StorpoolDownloadVolumeCommand.class)
 public final class StorpoolDownloadVolumeCommandWrapper extends CommandWrapper<StorpoolDownloadVolumeCommand, CopyCmdAnswer, LibvirtComputingResource> {
@@ -97,9 +96,10 @@ public final class StorpoolDownloadVolumeCommandWrapper extends CommandWrapper<S
             } else if(srcDataStore instanceof PrimaryDataStoreTO) {
                SP_LOG("SrcDisk is Primary Storage");
                PrimaryDataStoreTO primarySrc = (PrimaryDataStoreTO)srcDataStore;
-
+               SP_LOG("StorpoolDownloadVolumeCommandWrapper.execute primarySrcPoolType=%s, uuid-%s ", primarySrc.getPoolType(), primarySrc.getUuid());
                final KVMStoragePoolManager poolMgr = libvirtComputingResource.getStoragePoolMgr();
                srcDisk = poolMgr.getPhysicalDisk(primarySrc.getPoolType(), srcDataStore.getUuid(), src.getPath());
+               SP_LOG("PhysicalDisk: disk=%s", srcDisk );
             } else {
                 return new CopyCmdAnswer("Don't know how to copy from " + srcDataStore.getClass().getName() + ", " + src.getPath() );
             }
@@ -120,9 +120,9 @@ public final class StorpoolDownloadVolumeCommandWrapper extends CommandWrapper<S
             StorpoolStorageAdaptor.attachOrDetachVolume("attach", "volume", dstPath);
 
             final QemuImgFile dstFile = new QemuImgFile(dstPath, PhysicalDiskFormat.RAW);
-
+            SP_LOG("SRC format=%s, DST format=%s",srcFile.getFormat(), dstFile.getFormat());
             qemu.convert(srcFile, dstFile);
-            dst.setFormat(ImageFormat.RAW);
+            SP_LOG("StorpoolDownloadVolumeCommandWrapper VolumeObjectTO format=%s, hypervisor=%s", dst.getFormat(), dst.getHypervisorType());
             return new CopyCmdAnswer(dst);
         } catch (final Exception e) {
             final String error = "Failed to copy volume to primary: " + e.getMessage();

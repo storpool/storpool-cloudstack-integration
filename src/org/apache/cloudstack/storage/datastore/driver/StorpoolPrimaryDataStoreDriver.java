@@ -129,6 +129,18 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         primaryStoreDao.update(poolId, storagePool);
     }
 
+<<<<<<< HEAD
+=======
+    private void updateVolume(final long id) {
+        VolumeVO volumeVO = volumeDao.findById(id);
+        StorpoolUtil.spLog("updateVolume");
+        StorpoolUtil.spLog("updateVolume volumeformat=%s, volumestate=%s ", volumeVO.getFormat(), volumeVO.getState());
+        volumeVO.setPoolType(StoragePoolType.CLVM);
+        StorpoolUtil.spLog("updateVolume volumeVO=%s ", volumeVO);
+        volumeDao.update(id, volumeVO);
+    }
+
+>>>>>>> 6f5f372... removed RAW type of image format
     protected void _completeResponse(final CreateObjectAnswer answer, final String err, final AsyncCompletionCallback<CommandResult> callback)
     {
         final CreateCmdResult res = new CreateCmdResult(null, answer);
@@ -484,6 +496,10 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     if (resp.getError() != null) {
                         err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
                     } else {
+<<<<<<< HEAD
+=======
+                        //updateVolume(dstData.getId());
+>>>>>>> 6f5f372... removed RAW type of image format
                         VolumeObjectTO dstTO = (VolumeObjectTO)dstData.getTO();
                         dstTO.setPath(StorpoolUtil.devPath(name));
                         dstTO.setSize(size);
