@@ -48,7 +48,6 @@ import org.apache.cloudstack.storage.to.SnapshotObjectTO;
 import org.apache.cloudstack.storage.to.TemplateObjectTO;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.cloudstack.storage.volume.VolumeObject;
-import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.log4j.Logger;
 
 import com.cloud.agent.api.Answer;
@@ -271,7 +270,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             if (name == null) {
                 name = vinfo.getUuid();
             }
-            StorpoolUtil.spLog("delete volume: name=%s, uuid=%s, isAttached=%s vm=%s, payload=%s dataStore=%s", vinfo.getName(), vinfo.getUuid(), vinfo.isAttachedVM(), vinfo.getAttachedVmName(), vinfo.getpayload(), dataStore.getUuid());
+            StorpoolUtil.spLog("delete volume: name=%s, uuid=%s, isAttached=%s vm=%s, payload=%s dataStore=%s", vinfo.getName(), name, vinfo.isAttachedVM(), vinfo.getAttachedVmName(), vinfo.getpayload(), dataStore.getUuid());
 
             SpApiResponse resp = StorpoolUtil.volumeDelete(name);
             if (resp.getError() == null) {
@@ -529,12 +528,16 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 } else {
                     // download volume - first copies to secondary
                     VolumeObjectTO srcTO = (VolumeObjectTO)srcData.getTO();
-                    final String name = srcTO.getUuid();
+                    StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc SRC path=%s ", srcTO.getPath());
+                    StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc DST path=%s ", dstData.getTO().getPath());
+                    final String name = StorpoolStorageAdaptor.getVolumeNameFromPath(srcTO.getPath());
                     final String tmpSnapName = String.format("tmp-for-download-%s", name);
-
+                    StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc DST tmpSnapName=%s ,srcUUID=%s", tmpSnapName, srcTO.getUuid());
                     final SpApiResponse resp = StorpoolUtil.volumeSnapshot(name, tmpSnapName);
                     if (resp.getError() == null) {
+                        StorpoolUtil.spLog("srcTO path %s ", srcTO.getPath());
                         srcTO.setPath(StorpoolUtil.devPath(tmpSnapName));
+                        StorpoolUtil.spLog("srcTO path %s after ", srcTO.getPath());
                         cmd = new StorpoolCopyVolumeToSecondaryCommand(srcTO, dstData.getTO(), getTimeout(Config.CopyVolumeWait), VirtualMachineManager.ExecuteInSequence.value());
 
                         EndPoint ep = selector.select(srcData, dstData);

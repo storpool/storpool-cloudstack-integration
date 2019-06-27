@@ -111,7 +111,7 @@ public final class StorpoolDownloadVolumeCommandWrapper extends CommandWrapper<S
 
             SP_LOG("got src path: " + srcDisk.getPath() + " srcSize " + srcDisk.getVirtualSize());
 
-            final QemuImgFile srcFile = new QemuImgFile(srcDisk.getPath(), srcDisk.getFormat());
+            final QemuImgFile srcFile = new QemuImgFile(srcDisk.getPath(), PhysicalDiskFormat.RAW);
 
             final QemuImg qemu = new QemuImg(cmd.getWaitInMillSeconds());
             StorpoolStorageAdaptor.resize( Long.toString(srcDisk.getVirtualSize()), dst.getPath());
@@ -119,7 +119,7 @@ public final class StorpoolDownloadVolumeCommandWrapper extends CommandWrapper<S
             dstPath = dst.getPath();
             StorpoolStorageAdaptor.attachOrDetachVolume("attach", "volume", dstPath);
 
-            final QemuImgFile dstFile = new QemuImgFile(dstPath, PhysicalDiskFormat.RAW);
+            final QemuImgFile dstFile = new QemuImgFile(dstPath, srcFile.getFormat());
             SP_LOG("SRC format=%s, DST format=%s",srcFile.getFormat(), dstFile.getFormat());
             qemu.convert(srcFile, dstFile);
             SP_LOG("StorpoolDownloadVolumeCommandWrapper VolumeObjectTO format=%s, hypervisor=%s", dst.getFormat(), dst.getHypervisorType());
