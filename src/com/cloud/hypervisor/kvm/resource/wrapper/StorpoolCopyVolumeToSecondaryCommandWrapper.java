@@ -68,22 +68,24 @@ public final class StorpoolCopyVolumeToSecondaryCommandWrapper extends CommandWr
             final DataStoreTO dstDataStore = dst.getDataStore();
 
             final KVMStoragePoolManager poolMgr = libvirtComputingResource.getStoragePoolMgr();
-
+            SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: KVMStoragePoolManager " + poolMgr);
             KVMStoragePool destPool;
             if( dstDataStore instanceof NfsTO ) {
                 destPool = storagePoolMgr.getStoragePoolByURI(dstDataStore.getUrl());
+                SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: Nfs destPool=%s ",destPool);
             } else if( dstDataStore instanceof PrimaryDataStoreTO ) {
                 PrimaryDataStoreTO primaryDst = (PrimaryDataStoreTO)dstDataStore;
                 destPool = poolMgr.getStoragePool(primaryDst.getPoolType(), dstDataStore.getUuid());
+                SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: not Nfs destPool=%s " ,destPool);
             } else {
                 return new CopyCmdAnswer("Don't know how to copy to " + dstDataStore.getClass().getName() + ", " + dst.getPath() );
             }
-
-            KVMPhysicalDisk newDisk = destPool.createPhysicalDisk(dst.getName(), dst.getProvisioningType(), src.getSize());
-
+            SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: dstName=%s, dstProvisioningType=%s, srcSize=%s, dstUUID=%s, srcUUID=%s " ,dst.getName(), dst.getProvisioningType(), src.getSize(),dst.getUuid(), src.getUuid());
+            KVMPhysicalDisk newDisk = destPool.createPhysicalDisk(dst.getUuid(), dst.getProvisioningType(), src.getSize());
+            newDisk.setPath(dst.getUuid());
             String destPath = newDisk.getPath();
             PhysicalDiskFormat destFormat = newDisk.getFormat();
-
+            SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: KVMPhysicalDisk name=%s, format=%s, path=%s " , newDisk.getName(), newDisk.getFormat(), newDisk.getPath());
             QemuImgFile destFile = new QemuImgFile(destPath, destFormat);
             QemuImg qemu = new QemuImg(cmd.getWaitInMillSeconds());
             qemu.convert(srcFile, destFile);
@@ -91,7 +93,7 @@ public final class StorpoolCopyVolumeToSecondaryCommandWrapper extends CommandWr
             final File file = new File(destPath);
             final long size = file.exists() ? file.length() : 0;
 
-            dst.setPath(newDisk.getPath());
+            dst.setPath(dst.getUuid());
             dst.setSize(size);
             return new CopyCmdAnswer(dst);
         } catch (final Exception e) {
@@ -105,6 +107,7 @@ public final class StorpoolCopyVolumeToSecondaryCommandWrapper extends CommandWr
 
             if (secondaryPool != null) {
                 try {
+                    SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: secondaryPool=%s " , secondaryPool);
                     secondaryPool.delete();
                 } catch (final Exception e) {
                     s_logger.debug("Failed to delete secondary storage", e);
