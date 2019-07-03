@@ -19,9 +19,9 @@
 
 package com.cloud.hypervisor.kvm.resource.wrapper;
 
+import static com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor.SP_LOG;
+
 import java.io.File;
-//import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Logger;
 
 import org.apache.cloudstack.storage.command.CopyCmdAnswer;
 import org.apache.cloudstack.storage.to.PrimaryDataStoreTO;
@@ -29,6 +29,8 @@ import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.cloudstack.utils.qemu.QemuImg;
 import org.apache.cloudstack.utils.qemu.QemuImg.PhysicalDiskFormat;
 import org.apache.cloudstack.utils.qemu.QemuImgFile;
+//import org.apache.commons.io.FileUtils;
+import org.apache.log4j.Logger;
 
 import com.cloud.agent.api.storage.StorpoolCopyVolumeToSecondaryCommand;
 import com.cloud.agent.api.to.DataStoreTO;
@@ -40,8 +42,6 @@ import com.cloud.hypervisor.kvm.storage.KVMStoragePoolManager;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.resource.CommandWrapper;
 import com.cloud.resource.ResourceWrapper;
-
-import static com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor.SP_LOG;
 
 @ResourceWrapper(handles = StorpoolCopyVolumeToSecondaryCommand.class)
 public final class StorpoolCopyVolumeToSecondaryCommandWrapper extends CommandWrapper<StorpoolCopyVolumeToSecondaryCommand, CopyCmdAnswer, LibvirtComputingResource> {
@@ -81,20 +81,23 @@ public final class StorpoolCopyVolumeToSecondaryCommandWrapper extends CommandWr
                 return new CopyCmdAnswer("Don't know how to copy to " + dstDataStore.getClass().getName() + ", " + dst.getPath() );
             }
             SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: dstName=%s, dstProvisioningType=%s, srcSize=%s, dstUUID=%s, srcUUID=%s " ,dst.getName(), dst.getProvisioningType(), src.getSize(),dst.getUuid(), src.getUuid());
-            KVMPhysicalDisk newDisk = destPool.createPhysicalDisk(dst.getUuid(), dst.getProvisioningType(), src.getSize());
-            newDisk.setPath(dst.getUuid());
-            String destPath = newDisk.getPath();
-            PhysicalDiskFormat destFormat = newDisk.getFormat();
-            SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: KVMPhysicalDisk name=%s, format=%s, path=%s " , newDisk.getName(), newDisk.getFormat(), newDisk.getPath());
-            QemuImgFile destFile = new QemuImgFile(destPath, destFormat);
-            QemuImg qemu = new QemuImg(cmd.getWaitInMillSeconds());
-            qemu.convert(srcFile, destFile);
 
-            final File file = new File(destPath);
-            final long size = file.exists() ? file.length() : 0;
+                KVMPhysicalDisk newDisk = destPool.createPhysicalDisk(dst.getUuid(), dst.getProvisioningType(), src.getSize());
+                SP_LOG("NewDisk path=%s, uuid=%s ", newDisk.getPath(), dst.getUuid());
+                String destPath = newDisk.getPath();
+                newDisk.setPath(dst.getUuid());
 
-            dst.setPath(dst.getUuid());
-            dst.setSize(size);
+                PhysicalDiskFormat destFormat = newDisk.getFormat();
+                SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: KVMPhysicalDisk name=%s, format=%s, path=%s, destinationPath=%s " , newDisk.getName(), newDisk.getFormat(), newDisk.getPath(), destPath);
+                QemuImgFile destFile = new QemuImgFile(destPath, destFormat);
+                QemuImg qemu = new QemuImg(cmd.getWaitInMillSeconds());
+                qemu.convert(srcFile, destFile);
+
+                final File file = new File(destPath);
+                final long size = file.exists() ? file.length() : 0;
+                dst.setPath(dst.getUuid());
+                dst.setSize(size);
+
             return new CopyCmdAnswer(dst);
         } catch (final Exception e) {
             final String error = "Failed to copy volume to secondary storage: " + e.getMessage();
