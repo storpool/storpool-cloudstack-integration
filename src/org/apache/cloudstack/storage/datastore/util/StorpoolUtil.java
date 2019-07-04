@@ -335,6 +335,13 @@ public class StorpoolUtil {
         return POST("VolumeCreate", json);
     }
 
+    public static SpApiResponse volumeCopy(final String name, final String baseOn) {
+        Map<String, Object> json = new HashMap<>();
+        json.put("baseOn", baseOn);
+        json.put("name", name);
+        return POST("VolumeCreate", json);
+    }
+
     public static SpApiResponse volumeUpdate(final String name, final Long newSize, final Boolean shrinkOk) {
         Map<String, Object> json = new HashMap<>();
         json.put("size", newSize);

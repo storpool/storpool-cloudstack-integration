@@ -44,6 +44,7 @@ import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
+import org.apache.cloudstack.storage.to.PrimaryDataStoreTO;
 import org.apache.cloudstack.storage.to.SnapshotObjectTO;
 import org.apache.cloudstack.storage.to.TemplateObjectTO;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
@@ -529,26 +530,44 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     // download volume - first copies to secondary
                     VolumeObjectTO srcTO = (VolumeObjectTO)srcData.getTO();
                     StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc SRC path=%s ", srcTO.getPath());
-                    StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc DST path=%s ", dstData.getTO().getPath());
+                    StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc DST canonicalName=%s ", dstData.getDataStore().getClass().getCanonicalName());
+                    PrimaryDataStoreTO checkStoragePool = (PrimaryDataStoreTO)dstData.getTO().getDataStore();
                     final String name = StorpoolStorageAdaptor.getVolumeNameFromPath(srcTO.getPath());
                     final String tmpSnapName = String.format("tmp-for-download-%s", name);
                     StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc DST tmpSnapName=%s ,srcUUID=%s", tmpSnapName, srcTO.getUuid());
                     final SpApiResponse resp = StorpoolUtil.volumeSnapshot(name, tmpSnapName);
                     if (resp.getError() == null) {
-                        StorpoolUtil.spLog("srcTO path %s ", srcTO.getPath());
-                        srcTO.setPath(StorpoolUtil.devPath(tmpSnapName));
-                        StorpoolUtil.spLog("srcTO path %s after ", srcTO.getPath());
-                        cmd = new StorpoolCopyVolumeToSecondaryCommand(srcTO, dstData.getTO(), getTimeout(Config.CopyVolumeWait), VirtualMachineManager.ExecuteInSequence.value());
+                        if (checkStoragePool.getPoolType().equals(StoragePoolType.SharedMountPoint)) {
+                            String baseOn = StorpoolStorageAdaptor.getVolumeNameFromPath(srcTO.getPath());
+                            String volumeName = dstData.getUuid();
+                            StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc volumeName=%s, baseOn=%s", volumeName,baseOn );
+                            final SpApiResponse response = StorpoolUtil.volumeCopy(volumeName, baseOn);
+                            VolumeObjectTO to = (VolumeObjectTO)srcData.getTO();
+                            to.setSize(srcData.getSize());
+                            to.setPath(StorpoolUtil.devPath(volumeName));
+                            StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc DST to=%s", to);
 
-                        EndPoint ep = selector.select(srcData, dstData);
-                        if( ep == null ) {
-                            ep = selector.select(dstData);
-                        }
+                            answer = new CopyCmdAnswer(to);
+                        }else {
+                            srcTO.setPath(StorpoolUtil.devPath(tmpSnapName));
 
-                        if (ep == null) {
-                            err = "No remote endpoint to send command, check if host or ssvm is down?";
-                        } else {
-                            answer = ep.sendMessage(cmd);
+                            cmd = new StorpoolCopyVolumeToSecondaryCommand(srcTO, dstData.getTO(), getTimeout(Config.CopyVolumeWait), VirtualMachineManager.ExecuteInSequence.value());
+
+                            StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc command=%s ", cmd);
+
+                            EndPoint ep = selector.select(srcData, dstData);
+                            StorpoolUtil.spLog("selector.select(srcData, dstData) ", ep);
+                            if( ep == null ) {
+                                ep = selector.select(dstData);
+                                StorpoolUtil.spLog("selector.select(srcData) ", ep);
+                            }
+
+                            if (ep == null) {
+                                err = "No remote endpoint to send command, check if host or ssvm is down?";
+                            } else {
+                                answer = ep.sendMessage(cmd);
+                                StorpoolUtil.spLog("Answer: details=%s, result=%s", answer.getDetails(), answer.getResult());
+                            }
                         }
 
                         final SpApiResponse resp2 = StorpoolUtil.snapshotDelete(tmpSnapName);
