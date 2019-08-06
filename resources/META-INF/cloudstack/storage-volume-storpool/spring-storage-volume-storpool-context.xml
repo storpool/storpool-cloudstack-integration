@@ -32,4 +32,6 @@
 
     <bean id="storpoolSnapshotStrategy"
         class="org.apache.cloudstack.storage.snapshot.StorpoolSnapshotStrategy" />
+        <bean id="storpoolVMSnapshotStrategy"
+        class="org.apache.cloudstack.storage.snapshot.StorpoolVMSnapshotStrategy" />
 </beans>

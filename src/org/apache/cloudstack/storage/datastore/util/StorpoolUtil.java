@@ -18,41 +18,42 @@
  */
 package org.apache.cloudstack.storage.datastore.util;
 
-import java.io.PrintWriter;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
-import java.io.File;
-import java.text.SimpleDateFormat;
-import java.sql.Timestamp;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
 //import org.apache.http.impl.conn.BasicClientConnectionManager;
-
 import org.apache.log4j.Logger;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
-import com.google.gson.JsonObject;
-
+import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.script.OutputInterpreter;
 import com.cloud.utils.script.Script;
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 
 public class StorpoolUtil {
@@ -295,6 +296,7 @@ public class StorpoolUtil {
             Gson gson = new Gson();
             String js = gson.toJson(json);
             StringEntity input = new StringEntity(js, ContentType.APPLICATION_JSON);
+            log.info("Request:" + js);
             req.setEntity(input);
         }
 
@@ -350,12 +352,40 @@ public class StorpoolUtil {
         return POST("VolumeUpdate/" + name, json);
     }
 
+    public static SpApiResponse volumeUpadateTags(final String name, final Long vmId) {
+         Map<String, Object> json = new HashMap<>();
+         Map<String, String> tags = new HashMap<>();
+         tags.put("cvm", Long.toString(vmId));
+         json.put("tags", tags);
+         return POST("VolumeUpdate/" + name, json);
+    }
+
     public static SpApiResponse volumeSnapshot(final String volumeName, final String snapshotName) {
         Map<String, Object> json = new HashMap<>();
         json.put("name", snapshotName);
 
         return POST("VolumeSnapshot/" + volumeName, json);
     }
+
+    public static SpApiResponse volumesGroupSnapshot(final List<VolumeObjectTO> volumeTOs, final Long vmId, final String snapshotName) {
+         Map<String,Object> json = new LinkedHashMap<>();
+         Map<String, Object> tags = new HashMap<>();
+         List<Map<String, Object>> volumes = new ArrayList<>();
+         for (VolumeObjectTO volumeTO : volumeTOs) {
+              Map<String, Object> vol = new LinkedHashMap<>();
+              String uuid = StorpoolStorageAdaptor.getVolumeNameFromPath(volumeTO.getPath());
+              String snapName = snapshotName +"_" +uuid;
+              vol.put("name", snapName);
+              vol.put("volume", uuid);
+              volumes.add(vol);
+         }
+         tags.put("cvm", Long.toString(vmId));
+         json.put("tags", tags);
+         json.put("volumes", volumes);
+         log.info("json:"+ json);
+         StorpoolStorageAdaptor.SP_LOG("volumesGroupSnapshot=%s", json);
+         return POST("VolumesGroupSnapshot", json);
+}
 
     public static SpApiResponse volumeFreeze(final String volumeName) {
         return POST("VolumeFreeze/" + volumeName, null);
