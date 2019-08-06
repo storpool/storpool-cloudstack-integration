@@ -105,7 +105,7 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
   @Override
   public VMSnapshot takeVMSnapshot(VMSnapshot vmSnapshot) {
        // TODO Auto-generated method stub
-       log.info("KVMVMSnapshotStrategy take snapshot **************************************");
+       log.info("KVMVMSnapshotStrategy take snapshot");
        Long hostId = vmSnapshotHelper.pickRunningHost(vmSnapshot.getVmId());
        UserVm userVm = userVmDao.findById(vmSnapshot.getVmId());
        VMSnapshotVO vmSnapshotVO = (VMSnapshotVO) vmSnapshot;
@@ -207,13 +207,13 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                  return StrategyPriority.CANT_HANDLE;
             }
        }
-       log.info("KVMVMSnapshotStrategy canHandle ***************");
+       log.info("KVMVMSnapshotStrategy canHandle");
        return StrategyPriority.HIGHEST;
   }
 
   @Override
   public boolean deleteVMSnapshot(VMSnapshot vmSnapshot) {
-       log.info("In KVMVMSnapshotStrategy delete vm snapshot ********************");
+       log.info("In KVMVMSnapshotStrategy delete vm snapshot");
        UserVmVO userVm = userVmDao.findById(vmSnapshot.getVmId());
        VMSnapshotVO vmSnapshotVO = (VMSnapshotVO)vmSnapshot;
        try {
@@ -262,13 +262,13 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
 
   @Override
   public boolean deleteVMSnapshotFromDB(VMSnapshot arg0) {
-       log.info("In KVMVMSnapshotStrategy deleteVMSnapshotFromDB  ********************");
+       log.info("In KVMVMSnapshotStrategy deleteVMSnapshotFromDB");
        return false;
   }
 
   @Override
   public boolean revertVMSnapshot(VMSnapshot vmSnapshot) {
-       log.info("In KVMVMSnapshotStrategy revertVMSnapshot  ********************");
+       log.info("In KVMVMSnapshotStrategy revertVMSnapshot");
        return super.revertVMSnapshot(vmSnapshot);
   }
 

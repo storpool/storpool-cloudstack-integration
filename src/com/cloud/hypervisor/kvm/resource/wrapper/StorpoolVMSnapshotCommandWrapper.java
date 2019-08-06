@@ -40,7 +40,7 @@ public class StorpoolVMSnapshotCommandWrapper
 
      @Override
      public Answer execute(StorpoolCreateVMSnapshotCommand command, LibvirtComputingResource serverResource) {
-          log.info("StorpoolVMSnapshotCommandWrapper ******");
+          log.info("StorpoolVMSnapshotCommandWrapper");
           List<VolumeObjectTO> volumeTOs = command.getVolumeTOs();
           Long vmId = command.getVmId();
           SpApiResponse resp = StorpoolUtil.volumesGroupSnapshot(volumeTOs, vmId, command.getVmUuid());
