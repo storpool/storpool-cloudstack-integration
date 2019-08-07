@@ -73,11 +73,12 @@ public final class StorpoolBackupSnapshotCommandWrapper extends CommandWrapper<S
             FileUtils.forceMkdir(new File(dstDir));
 
             final String dstPath = dstDir + File.separator + dst.getName();
-            final QemuImgFile dstFile = new QemuImgFile(dstPath, PhysicalDiskFormat.RAW);
+            final QemuImgFile dstFile = new QemuImgFile(dstPath, PhysicalDiskFormat.QCOW2);
 
             final QemuImg qemu = new QemuImg(cmd.getWaitInMillSeconds());
             qemu.convert(srcFile, dstFile);
 
+            SP_LOG("StorpoolBackupSnapshotCommandWrapper srcFile.getFormat(), dstFile.getFormat()", srcFile.getFormat(), dstFile.getFormat());
             final File snapFile = new File(dstPath);
             final long size = snapFile.exists() ? snapFile.length() : 0;
 
