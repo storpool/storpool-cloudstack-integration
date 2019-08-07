@@ -23,7 +23,6 @@ public class StorpoolDeleteVMCommandWrapper
 
      @Override
      public Answer execute(StorpoolDeleteSnapshotVMCommand command, LibvirtComputingResource serverResource) {
-          // TODO Auto-generated method stub
           log.info("StorpoolDeleteVMCommandWrapper execute" + command.getVmName());
           List<VolumeObjectTO> volumeTOs = command.getVolumeTOs();
           SpApiResponse resp = null;

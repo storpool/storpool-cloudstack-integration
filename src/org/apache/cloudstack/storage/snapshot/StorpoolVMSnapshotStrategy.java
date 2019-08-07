@@ -19,6 +19,7 @@
 package org.apache.cloudstack.storage.snapshot;
 
 import java.security.InvalidParameterException;
+import java.util.HashMap;
 import java.util.List;
 
 import javax.inject.Inject;
@@ -42,6 +43,8 @@ import com.cloud.agent.api.storage.StorpoolCreateVMSnapshotAnswer;
 import com.cloud.agent.api.storage.StorpoolCreateVMSnapshotCommand;
 import com.cloud.agent.api.storage.StorpoolDeleteSnapshotVMCommand;
 import com.cloud.agent.api.storage.StorpoolDeleteVMSnapshotAnswer;
+import com.cloud.agent.api.storage.StorpoolRevertToVMSnapshotAnswer;
+import com.cloud.agent.api.storage.StorpoolRevertToVMSnapshotCommand;
 import com.cloud.agent.api.to.DataStoreTO;
 import com.cloud.event.EventTypes;
 import com.cloud.event.UsageEventUtils;
@@ -65,6 +68,8 @@ import com.cloud.utils.db.TransactionStatus;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.fsm.NoTransitionException;
 import com.cloud.vm.UserVmVO;
+import com.cloud.vm.VirtualMachineManager;
+import com.cloud.vm.VirtualMachineProfile;
 import com.cloud.vm.dao.UserVmDao;
 import com.cloud.vm.dao.VMInstanceDao;
 import com.cloud.vm.snapshot.VMSnapshot;
@@ -101,6 +106,8 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
   VMInstanceDao vmInstance;
   @Inject
   PrimaryDataStoreDao storagePool;
+  @Inject
+  VirtualMachineManager virtManager;
 
   @Override
   public VMSnapshot takeVMSnapshot(VMSnapshot vmSnapshot) {
@@ -269,7 +276,68 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
   @Override
   public boolean revertVMSnapshot(VMSnapshot vmSnapshot) {
        log.info("In KVMVMSnapshotStrategy revertVMSnapshot");
-       return super.revertVMSnapshot(vmSnapshot);
+       VMSnapshotVO vmSnapshotVO = (VMSnapshotVO)vmSnapshot;
+       UserVmVO userVm = userVmDao.findById(vmSnapshot.getVmId());
+       try {
+           vmSnapshotHelper.vmSnapshotStateTransitTo(vmSnapshotVO, VMSnapshot.Event.RevertRequested);
+       } catch (NoTransitionException e) {
+           throw new CloudRuntimeException(e.getMessage());
+       }
+
+       boolean result = false;
+       try {
+           VMSnapshotVO snapshot = vmSnapshotDao.findById(vmSnapshotVO.getId());
+           List<VolumeObjectTO> volumeTOs = vmSnapshotHelper.getVolumeTOList(userVm.getId());
+           String vmInstanceName = vmSnapshot.getUuid();
+           VMSnapshotTO parent = vmSnapshotHelper.getSnapshotWithParents(snapshot).getParent();
+
+           VMSnapshotTO vmSnapshotTO =
+               new VMSnapshotTO(snapshot.getId(), snapshot.getName(), snapshot.getType(), snapshot.getCreated().getTime(), snapshot.getDescription(),
+                   snapshot.getCurrent(), parent, true);
+           Long hostId = vmSnapshotHelper.pickRunningHost(vmSnapshot.getVmId());
+           GuestOSVO guestOS = guestOSDao.findById(userVm.getGuestOSId());
+           StorpoolRevertToVMSnapshotCommand revertToSnapshotCommand = new StorpoolRevertToVMSnapshotCommand(vmInstanceName, userVm.getUuid(), vmSnapshotTO, volumeTOs, guestOS.getDisplayName());
+           HostVO host = hostDao.findById(hostId);
+           GuestOSHypervisorVO guestOsMapping = guestOsHypervisorDao.findByOsIdAndHypervisor(guestOS.getId(), host.getHypervisorType().toString(), host.getHypervisorVersion());
+           if (guestOsMapping == null) {
+               revertToSnapshotCommand.setPlatformEmulator(null);
+           } else {
+               revertToSnapshotCommand.setPlatformEmulator(guestOsMapping.getGuestOsName());
+           }
+
+           StorpoolRevertToVMSnapshotAnswer answer = (StorpoolRevertToVMSnapshotAnswer)agentMgr.send(hostId, revertToSnapshotCommand);
+           if (answer != null && answer.getResult()) {
+               processAnswer(vmSnapshotVO, userVm, answer, hostId);
+               result = true;
+           } else {
+               String errMsg = "Revert VM: " + userVm.getInstanceName() + " to snapshot: " + vmSnapshotVO.getName() + " failed";
+               if (answer != null && answer.getDetails() != null)
+                   errMsg = errMsg + " due to " + answer.getDetails();
+               log.error(errMsg);
+               throw new CloudRuntimeException(errMsg);
+           }
+       } catch (OperationTimedoutException e) {
+          log.debug("Failed to revert vm snapshot", e);
+           throw new CloudRuntimeException(e.getMessage());
+       } catch (AgentUnavailableException e) {
+           log.debug("Failed to revert vm snapshot", e);
+           throw new CloudRuntimeException(e.getMessage());
+       } finally {
+           if (!result) {
+               try {
+                   vmSnapshotHelper.vmSnapshotStateTransitTo(vmSnapshot, VMSnapshot.Event.OperationFailed);
+               } catch (NoTransitionException e1) {
+                  log.error("Cannot set vm snapshot state due to: " + e1.getMessage());
+               }
+           }else {
+                try {
+                    virtManager.advanceStart(userVm.getUuid(), new HashMap<VirtualMachineProfile.Param, Object>(), null);
+               } catch (Exception e) {
+                    throw new CloudRuntimeException("Could not start VM:" + e.getMessage());
+               }
+           }
+       }
+       return result;
   }
 
   @Override
@@ -288,7 +356,11 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                            StorpoolDeleteVMSnapshotAnswer answer = (StorpoolDeleteVMSnapshotAnswer)as;
                            finalizeDelete(vmSnapshot, answer.getVolumeTOs());
                            vmSnapshotHelper.vmSnapshotStateTransitTo(vmSnapshot, VMSnapshot.Event.OperationSucceeded);
-                       }
+                       }else if (as instanceof StorpoolRevertToVMSnapshotAnswer) {
+                         StorpoolRevertToVMSnapshotAnswer answer = (StorpoolRevertToVMSnapshotAnswer) as;
+                         finalizeRevert(vmSnapshot, answer.getVolumeTOs());
+                         vmSnapshotHelper.vmSnapshotStateTransitTo(vmSnapshot, VMSnapshot.Event.OperationSucceeded);
+                    }
                  }
             });
        } catch (Exception e) {
