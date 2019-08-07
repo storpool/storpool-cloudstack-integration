@@ -129,13 +129,9 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         primaryStoreDao.update(poolId, storagePool);
     }
 
-    private void updateVolume(final long id) {
-        VolumeVO volumeVO = volumeDao.findById(id);
-        StorpoolUtil.spLog("updateVolume");
-        StorpoolUtil.spLog("updateVolume volumeformat=%s, volumestate=%s ", volumeVO.getFormat(), volumeVO.getState());
-        volumeVO.setPoolType(StoragePoolType.CLVM);
-        StorpoolUtil.spLog("updateVolume volumeVO=%s ", volumeVO);
-        volumeDao.update(id, volumeVO);
+    private Long getVMInstance(long id) {
+         VolumeVO volume = volumeDao.findById(id);
+         return volume.getInstanceId();
     }
 
     protected void _completeResponse(final CreateObjectAnswer answer, final String err, final AsyncCompletionCallback<CommandResult> callback)
@@ -640,7 +636,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     public void revertSnapshot(final SnapshotInfo snapshot, final SnapshotInfo snapshotOnPrimaryStore, final AsyncCompletionCallback<CommandResult> callback) {
         final String snapshotName = snapshot.getUuid();
         final VolumeInfo vinfo = snapshot.getBaseVolume();
-        final String volumeName = vinfo.getUuid();
+        final String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath());
         final String backupSnapshotName = volumeName + "_to_be_removed";
         final Long size = snapshot.getSize();
 
