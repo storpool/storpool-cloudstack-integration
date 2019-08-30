@@ -78,7 +78,7 @@ public final class StorpoolBackupSnapshotCommandWrapper extends CommandWrapper<S
             final QemuImg qemu = new QemuImg(cmd.getWaitInMillSeconds());
             qemu.convert(srcFile, dstFile);
 
-            SP_LOG("StorpoolBackupSnapshotCommandWrapper srcFile.getFormat(), dstFile.getFormat()", srcFile.getFormat(), dstFile.getFormat());
+            SP_LOG("StorpoolBackupSnapshotCommandWrapper srcFileFormat=%s, dstFileFormat=%s", srcFile.getFormat(), dstFile.getFormat());
             final File snapFile = new File(dstPath);
             final long size = snapFile.exists() ? snapFile.length() : 0;
 
