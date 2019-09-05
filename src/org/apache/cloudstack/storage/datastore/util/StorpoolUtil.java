@@ -351,21 +351,30 @@ public class StorpoolUtil {
         return POST("VolumeUpdate/" + name, json);
     }
 
-<<<<<<< HEAD
-=======
     public static SpApiResponse volumeUpadateTags(final String name, final Long vmId) {
          Map<String, Object> json = new HashMap<>();
          Map<String, String> tags = new HashMap<>();
          if (vmId != null) {
              tags.put("cvm", Long.toString(vmId));
          }else {
-             tags.put("cvm", "");
+             tags.put("cvm", "detached");
          }
          json.put("tags", tags);
          return POST("VolumeUpdate/" + name, json);
     }
 
->>>>>>> 70ccc55... added tags and date in logs
+    public static SpApiResponse snapshotUpadateTags(final String name, final Long vmId) {
+        Map<String, Object> json = new HashMap<>();
+        Map<String, String> tags = new HashMap<>();
+        if (vmId != null) {
+            tags.put("cvm", Long.toString(vmId));
+        }else {
+            tags.put("cvm", "detached");
+        }
+        json.put("tags", tags);
+        return POST("SnapshotUpdate/" + name, json);
+   }
+
     public static SpApiResponse volumeSnapshot(final String volumeName, final String snapshotName) {
         Map<String, Object> json = new HashMap<>();
         json.put("name", snapshotName);
