@@ -605,8 +605,9 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         String snapshotName = snapshot.getUuid();
         VolumeInfo vinfo = snapshot.getBaseVolume();
         String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath());
+        Long vmId = vinfo.getInstanceId();
         if (volumeName != null) {
-            StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriver.takeSnapshot volumename=%s ",volumeName);
+            StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriver.takeSnapshot volumename=%s vmInstance=%s",volumeName, vmId);
         }else {
             throw new UnsupportedOperationException("The path should be: " + StorpoolUtil.SP_DEV_PATH);
         }
@@ -625,6 +626,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             SnapshotObjectTO snapTo = (SnapshotObjectTO)snapshot.getTO();
             snapTo.setPath(StorpoolUtil.devPath(snapshotName));
             answer = new CreateObjectAnswer(snapTo);
+            StorpoolUtil.snapshotUpadateTags(snapshotName, vmId);
         }
 
         CreateCmdResult res = new CreateCmdResult(null, answer);
