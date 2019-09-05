@@ -29,6 +29,7 @@ import java.sql.Timestamp;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -104,7 +105,8 @@ public class StorpoolUtil {
     }
 
     public static void spLog(String fmt, Object... args) {
-        spLogPrinterWriter.println(String.format(fmt, args));
+        String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss,ms").format(Calendar.getInstance().getTime());
+        spLogPrinterWriter.println(String.format(timeStamp +" "+fmt, args));
         spLogPrinterWriter.flush();
         if ( spLogFile.length() > 107374182400L ) {
             spLogPrinterWriter.close();
@@ -331,7 +333,6 @@ public class StorpoolUtil {
         json.put("parent", parentName);
         json.put("template", template);
         json.put("size", size);
-
         return POST("VolumeCreate", json);
     }
 
@@ -350,6 +351,21 @@ public class StorpoolUtil {
         return POST("VolumeUpdate/" + name, json);
     }
 
+<<<<<<< HEAD
+=======
+    public static SpApiResponse volumeUpadateTags(final String name, final Long vmId) {
+         Map<String, Object> json = new HashMap<>();
+         Map<String, String> tags = new HashMap<>();
+         if (vmId != null) {
+             tags.put("cvm", Long.toString(vmId));
+         }else {
+             tags.put("cvm", "");
+         }
+         json.put("tags", tags);
+         return POST("VolumeUpdate/" + name, json);
+    }
+
+>>>>>>> 70ccc55... added tags and date in logs
     public static SpApiResponse volumeSnapshot(final String volumeName, final String snapshotName) {
         Map<String, Object> json = new HashMap<>();
         json.put("name", snapshotName);
