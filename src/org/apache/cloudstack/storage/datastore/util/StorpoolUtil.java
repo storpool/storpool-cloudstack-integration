@@ -29,6 +29,7 @@ import java.net.URISyntaxException;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -105,7 +106,8 @@ public class StorpoolUtil {
     }
 
     public static void spLog(String fmt, Object... args) {
-        spLogPrinterWriter.println(String.format(fmt, args));
+        String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss,ms").format(Calendar.getInstance().getTime());
+        spLogPrinterWriter.println(String.format(timeStamp +" "+fmt, args));
         spLogPrinterWriter.flush();
         if ( spLogFile.length() > 107374182400L ) {
             spLogPrinterWriter.close();
@@ -333,7 +335,6 @@ public class StorpoolUtil {
         json.put("parent", parentName);
         json.put("template", template);
         json.put("size", size);
-
         return POST("VolumeCreate", json);
     }
 
@@ -355,7 +356,11 @@ public class StorpoolUtil {
     public static SpApiResponse volumeUpadateTags(final String name, final Long vmId) {
          Map<String, Object> json = new HashMap<>();
          Map<String, String> tags = new HashMap<>();
-         tags.put("cvm", Long.toString(vmId));
+         if (vmId != null) {
+             tags.put("cvm", Long.toString(vmId));
+         }else {
+             tags.put("cvm", "");
+         }
          json.put("tags", tags);
          return POST("VolumeUpdate/" + name, json);
     }

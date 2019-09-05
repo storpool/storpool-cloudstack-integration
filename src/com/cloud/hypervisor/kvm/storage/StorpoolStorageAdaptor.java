@@ -20,7 +20,8 @@ package com.cloud.hypervisor.kvm.storage;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.PrintWriter;
-
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,8 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
     public static void SP_LOG(String fmt, Object... args) {
         try (PrintWriter spLogFile = new PrintWriter(new BufferedWriter(new FileWriter("/var/log/cloudstack/agent/storpool-agent.log", true)))) {
             final String line = String.format(fmt, args);
-            spLogFile.println(line);
+            String timeStamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss,ms").format(Calendar.getInstance().getTime());
+            spLogFile.println(timeStamp +" "+line);
             spLogFile.flush();
         } catch (Exception e) {
             throw new RuntimeException(e);
