@@ -148,9 +148,14 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
 
         for(int i = 0; i < numTries; i++) {
             Script sc = new Script("storpool", 0, log);
+            sc.add("-M");
             sc.add(command);
             sc.add(type, name);
             sc.add("here");
+            if( command.equals("attach") ) {
+                sc.add("onRemoteAttached");
+                sc.add("detachForce");
+            }
 
             OutputInterpreter.OneLineParser parser = new OutputInterpreter.OneLineParser();
 
@@ -195,8 +200,10 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
         SP_LOG("StorpooolStorageAdaptor.resize: size=%s, uuid=%s, name=%s", newSize, volumeUuid, name);
 
         Script sc = new Script("storpool", 0, log);
+        sc.add("-M");
         sc.add("volume");
         sc.add(name);
+        sc.add("update");
         sc.add("size");
         sc.add(newSize);
         sc.add("shrinkOk");
@@ -280,6 +287,7 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
         }
 
         Script sc = new Script("storpool", 0, log);
+        sc.add("-M");
         sc.add("snapshot", name);
         sc.add("delete", name);
 

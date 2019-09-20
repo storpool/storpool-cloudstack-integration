@@ -18,6 +18,7 @@
  */
 package org.apache.cloudstack.storage.datastore.driver;
 
+import java.util.List;
 import java.util.Map;
 
 import javax.inject.Inject;
@@ -35,6 +36,7 @@ import org.apache.cloudstack.engine.subsystem.api.storage.TemplateInfo;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeInfo;
 import org.apache.cloudstack.framework.async.AsyncCompletionCallback;
 import org.apache.cloudstack.framework.config.dao.ConfigurationDao;
+import org.apache.cloudstack.storage.RemoteHostEndPoint;
 import org.apache.cloudstack.storage.command.CommandResult;
 import org.apache.cloudstack.storage.command.CopyCmdAnswer;
 import org.apache.cloudstack.storage.command.CopyCommand;
@@ -65,7 +67,11 @@ import com.cloud.agent.api.to.DataStoreTO;
 import com.cloud.agent.api.to.DataTO;
 import com.cloud.agent.api.to.StorageFilerTO;
 import com.cloud.configuration.Config;
+import com.cloud.dc.ClusterVO;
+import com.cloud.dc.dao.ClusterDao;
 import com.cloud.host.Host;
+import com.cloud.host.HostVO;
+import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.storage.ResizeVolumePayload;
 import com.cloud.storage.Storage.StoragePoolType;
@@ -91,6 +97,8 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     @Inject ConfigurationDao configDao;
     @Inject VMTemplatePoolDao vmTemplatePoolDao;
     @Inject VMInstanceDao vmInstanceDao;
+    @Inject ClusterDao clusterDao;
+    @Inject HostDao hostDao;
 
     @Override
     public Map<String, String> getCapabilities() {
@@ -377,20 +385,20 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 } else {
                     // copy snapshot to secondary storage (backup snapshot)
                     cmd = new StorpoolBackupSnapshotCommand(srcData.getTO(), dstData.getTO(), getTimeout(Config.BackupSnapshotWait), VirtualMachineManager.ExecuteInSequence.value());
-    
-                    EndPoint ep = selector.select(srcData, dstData);
+
+                    final String snapName = ((SnapshotInfo) srcData).getUuid();
+                    SpConnectionDesc conn = new SpConnectionDesc(srcData.getDataStore().getUuid());
+                    Long clusterId = findClusterId(StorpoolUtil.getSnapshotClusterID(snapName, conn), srcData.getDataStore().getScope().getScopeId());
+                    EndPoint ep = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, dstData);
                     if (ep == null) {
                         err = "No remote endpoint to send command, check if host or ssvm is down?";
                     } else {
                         answer = ep.sendMessage(cmd);
                         // if error during snapshot backup, cleanup the StorPool snapshot
-                        if( answer != null && !answer.getResult() ) {
-                            final String snapName = ((SnapshotInfo)srcData).getUuid();
+                        if (answer != null && !answer.getResult()) {
                             StorpoolUtil.spLog(String.format("Error while backing-up snapshot '%s' - cleaning up StorPool snapshot. Error: %s", snapName, answer.getDetails()));
-                            SpConnectionDesc conn = new SpConnectionDesc(srcData.getDataStore().getUuid());
-    
                             SpApiResponse resp = StorpoolUtil.snapshotDelete(snapName, conn);
-                            if( resp.getError() != null ) {
+                            if (resp.getError() != null) {
                                 final String err2 = String.format("Failed to cleanup StorPool snapshot '%s'. Error: %s.", snapName, resp.getError());
                                 log.error(err2);
                                 StorpoolUtil.spLog(err2);
@@ -463,13 +471,12 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         } else {
                             err = answer != null ? answer.getDetails() : "Unknown error while downloading template. Null answer returned.";
                         }
-
-                        if (err != null) {
-                            SpApiResponse resp3 = StorpoolUtil.volumeDelete(name, conn);
-                            if (resp3.getError() != null) {
-                                log.warn(String.format("Could not clean-up Storpool volume %s. Error: %s", name, resp3.getError()));
-                            }
-                        }
+                    }
+                }
+                if (err != null) {
+                    SpApiResponse resp = StorpoolUtil.volumeDelete(name, conn);
+                    if (resp.getError() != null) {
+                        log.warn(String.format("Could not clean-up Storpool volume %s. Error: %s", name, resp.getError()));
                     }
                 }
             } else if (srcType == DataObjectType.TEMPLATE && dstType == DataObjectType.VOLUME) {
@@ -724,5 +731,21 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         to.setSize(size);
         to.setPath(StorpoolUtil.devPath(volumeName));
         completeResponse(to, callback);
+    }
+
+    private Long findClusterId(String clusterId, Long zoneId) {
+        List<ClusterVO> clusterVo = clusterDao.listAll();
+        for (ClusterVO clusterVO2 : clusterVo) {
+            StorpoolUtil.spLog("StorPool cluset id=%s, cluster id value=%s, equal=%s", clusterId, BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()), clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString()));
+            if (clusterId != null && clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString())) {
+                return clusterVO2.getId();
+            }
+        }
+        return null;
+    }
+
+    private HostVO findHostByCluster(Long clusterId) {
+        List<HostVO> host = hostDao.findByClusterId(clusterId);
+        return host != null ? host.get(0) : null;
     }
 }
