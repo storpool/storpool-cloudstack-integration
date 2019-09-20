@@ -30,7 +30,9 @@ import org.springframework.stereotype.Component;
 
 import com.cloud.storage.Snapshot;
 import com.cloud.storage.SnapshotVO;
+import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.SnapshotDao;
+import com.cloud.storage.dao.VolumeDao;
 import com.cloud.utils.fsm.NoTransitionException;
 
 
@@ -40,6 +42,7 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
 
     @Inject private SnapshotDao _snapshotDao;
     @Inject private PrimaryDataStoreDao _primaryDataStoreDao;
+    @Inject private VolumeDao _volumeDao;
 
     @Override
     public SnapshotInfo backupSnapshot(SnapshotInfo snapshotInfo) {
@@ -68,10 +71,10 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
         final boolean res = super.deleteSnapshot(snapshotId);
         if (res) {
             // clean-up snapshot from Storpool storage pools
-            for (StoragePoolVO sp : _primaryDataStoreDao.findPoolsByProvider("StorPool")) {
-                if( sp.getDataCenterId() != snapshotVO.getDataCenterId() )
-                    continue;
-                SpConnectionDesc conn = new SpConnectionDesc(sp.getUuid());
+            VolumeVO volume = _volumeDao.findByIdIncludingRemoved(snapshotVO.getVolumeId());
+            StoragePoolVO storage = _primaryDataStoreDao.findById(volume.getPoolId());
+            if (storage.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
+                SpConnectionDesc conn = new SpConnectionDesc(storage.getUuid());
                 SpApiResponse resp = StorpoolUtil.snapshotDelete(name, conn);
                 if (resp.getError() != null) {
                     final String err = String.format("Failed to clean-up Storpool snapshot %s. Error: %s", name, resp.getError());
@@ -88,23 +91,18 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
     public StrategyPriority canHandle(Snapshot snapshot, SnapshotOperation op) {
         StorpoolUtil.spLog("StorpoolSnapshotStrategy.canHandle: snapshot=%s, uuid=%s, op=%s", snapshot.getName(), snapshot.getUuid(), op);
 
-        if (op == SnapshotOperation.TAKE && !BackupManager.BackupOnSecondary.value()) {
-            return StrategyPriority.HIGHEST;
-        }
-
         if (op != SnapshotOperation.DELETE) {
             return StrategyPriority.CANT_HANDLE;
         }
 
-        final SnapshotVO snapshotVO = _snapshotDao.findById(snapshot.getSnapshotId());
-
-        for (StoragePoolVO sp : _primaryDataStoreDao.findPoolsByProvider("StorPool")) {
-                if( sp.getDataCenterId() != snapshotVO.getDataCenterId() )
-                    continue;
-                SpConnectionDesc conn = new SpConnectionDesc(sp.getUuid());
-                if (StorpoolUtil.snapshotExists(snapshot.getUuid(), conn))
-                    return StrategyPriority.HIGHEST;
+        VolumeVO volume = _volumeDao.findByIdIncludingRemoved(snapshot.getVolumeId());
+        StoragePoolVO storage = _primaryDataStoreDao.findById(volume.getPoolId());
+        if (storage.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
+            SpConnectionDesc conn = new SpConnectionDesc(storage.getUuid());
+            if (StorpoolUtil.snapshotExists(snapshot.getUuid(), conn)) {
+                return StrategyPriority.HIGHEST;
             }
+        }
 
         return StrategyPriority.CANT_HANDLE;
     }
