@@ -212,7 +212,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             StoragePool pool = (StoragePool)data.getDataStore();
             ResizeVolumePayload payload = (ResizeVolumePayload)vol.getpayload();
 
-            final String name = vol.getUuid();
+            final String name = StorpoolStorageAdaptor.getVolumeNameFromPath(vol.getPath());
             final long oldSize = vol.getSize();
 
             StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.resize: name=%s, uuid=%s, oldSize=%d, newSize=%s, shrinkOk=%s", vol.getName(), vol.getUuid(), oldSize, payload.newSize, payload.shrinkOk);
