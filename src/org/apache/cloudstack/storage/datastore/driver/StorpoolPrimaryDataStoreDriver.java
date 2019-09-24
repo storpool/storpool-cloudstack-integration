@@ -212,7 +212,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             StoragePool pool = (StoragePool)data.getDataStore();
             ResizeVolumePayload payload = (ResizeVolumePayload)vol.getpayload();
 
-            final String name = vol.getUuid();
+            final String name = StorpoolStorageAdaptor.getVolumeNameFromPath(vol.getPath());
             final long oldSize = vol.getSize();
 
             StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.resize: name=%s, uuid=%s, oldSize=%d, newSize=%s, shrinkOk=%s", vol.getName(), vol.getUuid(), oldSize, payload.newSize, payload.shrinkOk);
@@ -461,6 +461,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         size = snapshotSize;
                     }
                     StorpoolUtil.spLog(String.format("volume size is: %d", size));
+                    Long vmId = vinfo.getInstanceId();
                     SpApiResponse resp = StorpoolUtil.volumeCreate(name, parentName, null, size);
                     if (resp.getError() == null) {
                         updateStoragePool(dstData.getDataStore().getId(), vinfo.getSize());
@@ -484,8 +485,10 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     if(size == null || size == 0)
                         size = 1L*1024*1024*1024;
                     String templateName = dstData.getDataStore().getUuid();
+                    VolumeInfo srcInfo = (VolumeInfo) srcData;
+                    Long vmId = srcInfo.getInstanceId();
 
-                    SpApiResponse resp = StorpoolUtil.volumeCreate(name, null, templateName, size);
+                    SpApiResponse resp = StorpoolUtil.volumeCreateWithTags(name, null, templateName, size,vmId);
                     if (resp.getError() != null) {
                         err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
                     } else {
@@ -641,7 +644,6 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         final String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath());
         final String backupSnapshotName = volumeName + "_to_be_removed";
         final Long size = snapshot.getSize();
-
         StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.revertSnapshot: snapshot: name=%s, uuid=%s, volume: name=%s, uuid=%s", snapshot.getName(), snapshot.getUuid(), vinfo.getName(), vinfo.getUuid());
 
         // Ignore the error that will almost certainly occur - no such snapshot
