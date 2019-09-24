@@ -18,42 +18,43 @@
  */
 package org.apache.cloudstack.storage.datastore.util;
 
-import java.io.PrintWriter;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
-import java.io.File;
-import java.text.SimpleDateFormat;
-import java.sql.Timestamp;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
 //import org.apache.http.impl.conn.BasicClientConnectionManager;
-
 import org.apache.log4j.Logger;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
-import com.google.gson.JsonObject;
-
+import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.script.OutputInterpreter;
 import com.cloud.utils.script.Script;
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 
 public class StorpoolUtil {
@@ -297,6 +298,7 @@ public class StorpoolUtil {
             Gson gson = new Gson();
             String js = gson.toJson(json);
             StringEntity input = new StringEntity(js, ContentType.APPLICATION_JSON);
+            log.info("Request:" + js);
             req.setEntity(input);
         }
 
@@ -328,11 +330,27 @@ public class StorpoolUtil {
     }
 
     public static SpApiResponse volumeCreate(final String name, final String parentName, final String template, final Long size) {
-        Map<String, Object> json = new HashMap<>();
+        Map<String, Object> json = new LinkedHashMap<>();
         json.put("name", name);
         json.put("parent", parentName);
         json.put("template", template);
         json.put("size", size);
+        return POST("VolumeCreate", json);
+    }
+
+    public static SpApiResponse volumeCreateWithTags(final String name, final String parentName, final String template, final Long size, Long vmID) {
+        Map<String, Object> json = new LinkedHashMap<>();
+        json.put("name", name);
+        json.put("parent", parentName);
+        json.put("size", size);
+        json.put("template", template);
+        Map<String, String> tags = new HashMap<>();
+        if (vmID != null) {
+            tags.put("cvm", Long.toString(vmID));
+        }else {
+            tags.put("cvm", "detached");
+        }
+        json.put("tags", tags);
         return POST("VolumeCreate", json);
     }
 
@@ -381,6 +399,25 @@ public class StorpoolUtil {
 
         return POST("VolumeSnapshot/" + volumeName, json);
     }
+
+    public static SpApiResponse volumesGroupSnapshot(final List<VolumeObjectTO> volumeTOs, final Long vmId, final String snapshotName) {
+         Map<String,Object> json = new LinkedHashMap<>();
+         Map<String, Object> tags = new HashMap<>();
+         List<Map<String, Object>> volumes = new ArrayList<>();
+         for (VolumeObjectTO volumeTO : volumeTOs) {
+              Map<String, Object> vol = new LinkedHashMap<>();
+              String uuid = StorpoolStorageAdaptor.getVolumeNameFromPath(volumeTO.getPath());
+              String snapName = snapshotName +"_" +uuid;
+              vol.put("name", snapName);
+              vol.put("volume", uuid);
+              volumes.add(vol);
+         }
+         tags.put("cvm", Long.toString(vmId));
+         json.put("tags", tags);
+         json.put("volumes", volumes);
+         log.info("json:"+ json);
+         return POST("VolumesGroupSnapshot", json);
+}
 
     public static SpApiResponse volumeFreeze(final String volumeName) {
         return POST("VolumeFreeze/" + volumeName, null);
