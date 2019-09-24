@@ -330,11 +330,27 @@ public class StorpoolUtil {
     }
 
     public static SpApiResponse volumeCreate(final String name, final String parentName, final String template, final Long size) {
-        Map<String, Object> json = new HashMap<>();
+        Map<String, Object> json = new LinkedHashMap<>();
         json.put("name", name);
         json.put("parent", parentName);
         json.put("template", template);
         json.put("size", size);
+        return POST("VolumeCreate", json);
+    }
+
+    public static SpApiResponse volumeCreateWithTags(final String name, final String parentName, final String template, final Long size, Long vmID) {
+        Map<String, Object> json = new LinkedHashMap<>();
+        json.put("name", name);
+        json.put("parent", parentName);
+        json.put("size", size);
+        json.put("template", template);
+        Map<String, String> tags = new HashMap<>();
+        if (vmID != null) {
+            tags.put("cvm", Long.toString(vmID));
+        }else {
+            tags.put("cvm", "detached");
+        }
+        json.put("tags", tags);
         return POST("VolumeCreate", json);
     }
 
@@ -400,7 +416,6 @@ public class StorpoolUtil {
          json.put("tags", tags);
          json.put("volumes", volumes);
          log.info("json:"+ json);
-         StorpoolStorageAdaptor.SP_LOG("volumesGroupSnapshot=%s", json);
          return POST("VolumesGroupSnapshot", json);
 }
 
