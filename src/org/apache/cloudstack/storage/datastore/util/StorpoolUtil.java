@@ -330,7 +330,7 @@ public class StorpoolUtil {
     }
 
     public static SpApiResponse volumeCreate(final String name, final String parentName, final String template, final Long size) {
-        Map<String, Object> json = new LinkedHashMap<>();
+        Map<String, Object> json = new HashMap<>();
         json.put("name", name);
         json.put("parent", parentName);
         json.put("template", template);
@@ -345,11 +345,7 @@ public class StorpoolUtil {
         json.put("size", size);
         json.put("template", template);
         Map<String, String> tags = new HashMap<>();
-        if (vmID != null) {
-            tags.put("cvm", Long.toString(vmID));
-        }else {
-            tags.put("cvm", "detached");
-        }
+        tags.put("cvm", vmID != null ? Long.toString(vmID) : "detached");
         json.put("tags", tags);
         return POST("VolumeCreate", json);
     }
@@ -372,11 +368,7 @@ public class StorpoolUtil {
     public static SpApiResponse volumeUpadateTags(final String name, final Long vmId) {
          Map<String, Object> json = new HashMap<>();
          Map<String, String> tags = new HashMap<>();
-         if (vmId != null) {
-             tags.put("cvm", Long.toString(vmId));
-         }else {
-             tags.put("cvm", "detached");
-         }
+         tags.put("cvm", vmId != null ? Long.toString(vmId) : "detached");
          json.put("tags", tags);
          return POST("VolumeUpdate/" + name, json);
     }
@@ -384,11 +376,7 @@ public class StorpoolUtil {
     public static SpApiResponse snapshotUpadateTags(final String name, final Long vmId) {
         Map<String, Object> json = new HashMap<>();
         Map<String, String> tags = new HashMap<>();
-        if (vmId != null) {
-            tags.put("cvm", Long.toString(vmId));
-        }else {
-            tags.put("cvm", "detached");
-        }
+        tags.put("cvm", vmId != null ? Long.toString(vmId) : "detached");
         json.put("tags", tags);
         return POST("SnapshotUpdate/" + name, json);
    }
