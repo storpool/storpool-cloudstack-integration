@@ -18,8 +18,6 @@
 //
 package org.apache.cloudstack.storage.snapshot;
 
-import java.security.InvalidParameterException;
-import java.util.HashMap;
 import java.util.List;
 
 import javax.inject.Inject;
@@ -30,6 +28,7 @@ import org.apache.cloudstack.framework.config.dao.ConfigurationDao;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
+import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.cloudstack.storage.vmsnapshot.DefaultVMSnapshotStrategy;
 import org.apache.cloudstack.storage.vmsnapshot.VMSnapshotHelper;
@@ -48,14 +47,12 @@ import com.cloud.agent.api.storage.StorpoolRevertToVMSnapshotCommand;
 import com.cloud.agent.api.to.DataStoreTO;
 import com.cloud.event.EventTypes;
 import com.cloud.event.UsageEventUtils;
-import com.cloud.exception.AgentUnavailableException;
-import com.cloud.exception.OperationTimedoutException;
 import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
+import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.storage.DiskOfferingVO;
 import com.cloud.storage.GuestOSHypervisorVO;
 import com.cloud.storage.GuestOSVO;
-import com.cloud.storage.Storage;
 import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.DiskOfferingDao;
 import com.cloud.storage.dao.GuestOSDao;
@@ -69,7 +66,6 @@ import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.fsm.NoTransitionException;
 import com.cloud.vm.UserVmVO;
 import com.cloud.vm.VirtualMachineManager;
-import com.cloud.vm.VirtualMachineProfile;
 import com.cloud.vm.dao.UserVmDao;
 import com.cloud.vm.dao.VMInstanceDao;
 import com.cloud.vm.snapshot.VMSnapshot;
@@ -111,7 +107,6 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
 
      @Override
      public VMSnapshot takeVMSnapshot(VMSnapshot vmSnapshot) {
-          // TODO Auto-generated method stub
           log.info("KVMVMSnapshotStrategy take snapshot");
           Long hostId = vmSnapshotHelper.pickRunningHost(vmSnapshot.getVmId());
           UserVm userVm = userVmDao.findById(vmSnapshot.getVmId());
@@ -120,14 +115,12 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
           try {
                vmSnapshotHelper.vmSnapshotStateTransitTo(vmSnapshotVO, VMSnapshot.Event.CreateRequested);
           } catch (NoTransitionException e) {
-               // TODO: handle exception
-               throw new CloudRuntimeException(e.getMessage());
+               throw new CloudRuntimeException("No transiontion "+e.getMessage());
           }
 
           StorpoolCreateVMSnapshotAnswer answer = null;
           boolean result = false;
           try {
-               GuestOSVO guestOS = guestOSDao.findById(userVm.getGuestOSId());
 
                List<VolumeObjectTO> volumeTOs = vmSnapshotHelper.getVolumeTOList(userVm.getId());
 
@@ -138,11 +131,6 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                     VolumeVO volumeVO = volumeDao.findById(volume.getId());
                     prev_chain_size += volumeVO.getVmSnapshotChainSize() == null ? 0
                               : volumeVO.getVmSnapshotChainSize();
-                    StoragePoolVO storagePoolVO = storagePool.findById(volumeVO.getPoolId());
-                    log.info("Storage pool " + storagePoolVO.getPoolType());
-                    if (storagePoolVO.getPoolType().equals(Storage.StoragePoolType.NetworkFilesystem)) {
-                         throw new InvalidParameterException("Not supported command");
-                    }
                }
 
                VMSnapshotTO current = null;
@@ -163,22 +151,13 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                     vmSnapshotVO.setParent(current.getId());
                }
 
-               HostVO host = hostDao.findById(hostId);
-               GuestOSHypervisorVO guestOsMapping = guestOsHypervisorDao.findByOsIdAndHypervisor(guestOS.getId(),
-                         host.getHypervisorType().toString(), host.getHypervisorVersion());
-
+               SpApiResponse resp = StorpoolUtil.volumesGroupSnapshot(volumeTOs, userVm.getId(), vmSnapshotVO.getUuid());
                StorpoolCreateVMSnapshotCommand cmd = new StorpoolCreateVMSnapshotCommand(vmSnapshot.getUuid(),
-                         vmSnapshotVO.getUuid(), userVm.getId(), target, volumeTOs, guestOS.getDisplayName());
-               if (guestOsMapping == null) {
-                    cmd.setPlatformEmulator(null);
-               } else {
-                    cmd.setPlatformEmulator(guestOsMapping.getGuestOsName());
-               }
-               cmd.setWait(_wait);
+                         vmSnapshotVO.getUuid(), userVm.getId(), target, volumeTOs, null);
 
-               answer = (StorpoolCreateVMSnapshotAnswer) agentMgr.send(hostId, cmd);
-               log.info("CreateKVMVMSnapshotAnswer answer" + answer.getDetails());
-               if (answer != null && answer.getResult()) {
+               if (resp.getError() ==null) {
+                    log.info("StorpoolVMSnapshotStrategy.takeSnapshot answer" + resp.getError());
+                    answer = new StorpoolCreateVMSnapshotAnswer(cmd, target, volumeTOs);
                     processAnswer(vmSnapshotVO, userVm, answer, hostId);
                     result = true;
                     long new_chain_size = 0;
@@ -190,7 +169,7 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                     publishUsageEvent(EventTypes.EVENT_VM_SNAPSHOT_ON_PRIMARY, vmSnapshot, userVm,
                               new_chain_size - prev_chain_size, virtual_size);
                } else {
-                    throw new CloudRuntimeException("Could not create vm snapshot:" + answer.getDetails());
+                    throw new CloudRuntimeException("Could not create vm snapshot");
                }
                return vmSnapshot;
           } catch (Exception e) {
@@ -221,13 +200,12 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                     return StrategyPriority.CANT_HANDLE;
                }
           }
-          log.info("KVMVMSnapshotStrategy canHandle");
+          log.info("StorpoolVMSnapshotStrategy HIGHEST");
           return StrategyPriority.HIGHEST;
      }
 
      @Override
      public boolean deleteVMSnapshot(VMSnapshot vmSnapshot) {
-          log.info("In KVMVMSnapshotStrategy delete vm snapshot");
           UserVmVO userVm = userVmDao.findById(vmSnapshot.getVmId());
           VMSnapshotVO vmSnapshotVO = (VMSnapshotVO) vmSnapshot;
           try {
@@ -238,54 +216,50 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                          "Failed to change vm snapshot state with event ExpungeRequested: " + e.getMessage());
           }
 
-          try {
-               Long hostId = vmSnapshotHelper.pickRunningHost(vmSnapshot.getVmId());
+          Long hostId = vmSnapshotHelper.pickRunningHost(vmSnapshot.getVmId());
 
-               List<VolumeObjectTO> volumeTOs = vmSnapshotHelper.getVolumeTOList(vmSnapshot.getVmId());
+           List<VolumeObjectTO> volumeTOs = vmSnapshotHelper.getVolumeTOList(vmSnapshot.getVmId());
 
-               String vmInstanceName = vmSnapshot.getUuid();
-               VMSnapshotTO parent = vmSnapshotHelper.getSnapshotWithParents(vmSnapshotVO).getParent();
-               VMSnapshotTO vmSnapshotTO = new VMSnapshotTO(vmSnapshot.getId(), vmSnapshot.getName(),
-                         vmSnapshot.getType(), vmSnapshot.getCreated().getTime(), vmSnapshot.getDescription(),
-                         vmSnapshot.getCurrent(), parent, true);
-               GuestOSVO guestOS = guestOSDao.findById(userVm.getGuestOSId());
-               StorpoolDeleteSnapshotVMCommand deleteSnapshotCommand = new StorpoolDeleteSnapshotVMCommand(
-                         vmInstanceName, vmSnapshotTO, volumeTOs, guestOS.getDisplayName());
+           String vmInstanceName = vmSnapshot.getUuid();
+           VMSnapshotTO parent = vmSnapshotHelper.getSnapshotWithParents(vmSnapshotVO).getParent();
+           VMSnapshotTO vmSnapshotTO = new VMSnapshotTO(vmSnapshot.getId(), vmSnapshot.getName(),
+                     vmSnapshot.getType(), vmSnapshot.getCreated().getTime(), vmSnapshot.getDescription(),
+                     vmSnapshot.getCurrent(), parent, true);
+           StorpoolDeleteSnapshotVMCommand deleteSnapshotCommand = new StorpoolDeleteSnapshotVMCommand(
+                     vmInstanceName, vmSnapshotTO, volumeTOs, null);
 
-               Answer answer = agentMgr.send(hostId, deleteSnapshotCommand);
-
-               log.debug("Delete vm nsapshot answer" + answer);
-               if (answer != null && answer.getResult()) {
-                    StorpoolDeleteVMSnapshotAnswer deleteVMSnapshotAnswer = (StorpoolDeleteVMSnapshotAnswer) answer;
-                    processAnswer(vmSnapshotVO, userVm, answer, hostId);
-                    long full_chain_size = 0;
-                    for (VolumeObjectTO volumeTo : deleteVMSnapshotAnswer.getVolumeTOs()) {
-                         publishUsageEvent(EventTypes.EVENT_VM_SNAPSHOT_DELETE, vmSnapshot, userVm, volumeTo);
-                         full_chain_size += volumeTo.getSize();
-                    }
-                    publishUsageEvent(EventTypes.EVENT_VM_SNAPSHOT_OFF_PRIMARY, vmSnapshot, userVm, full_chain_size,
-                              0L);
-                    return true;
-               } else {
-                    String errMsg = (answer == null) ? null : answer.getDetails();
-                    log.error("Delete vm snapshot " + vmSnapshot.getName() + " of vm " + userVm.getInstanceName()
-                              + " failed due to " + errMsg);
-                    throw new CloudRuntimeException("Delete vm snapshot " + vmSnapshot.getName() + " of vm "
-                              + userVm.getInstanceName() + " failed due to " + errMsg);
+           SpApiResponse resp = null;
+           StorpoolDeleteVMSnapshotAnswer answer  = null;
+           String err = null;
+           for (VolumeObjectTO volumeObjectTO : volumeTOs) {
+               String snapshotName = vmInstanceName + "_"
+                         + StorpoolStorageAdaptor.getVolumeNameFromPath(volumeObjectTO.getPath());
+               log.info("StorpoolVMSnapshotStrategy.deleteVMSnapshot snapshotName=" + snapshotName);
+               resp = StorpoolUtil.snapshotDelete(snapshotName);
+               if (resp.getError() != null) {
+                    err = String.format("Could not delete storpool vm error=%s", resp.getError());
+                    log.error("Could not delete snapshot for vm:" + err);
                }
-          } catch (OperationTimedoutException e) {
-               throw new CloudRuntimeException("Delete vm snapshot " + vmSnapshot.getName() + " of vm "
-                         + userVm.getInstanceName() + " failed due to " + e.getMessage());
-          } catch (AgentUnavailableException e) {
-               throw new CloudRuntimeException("Delete vm snapshot " + vmSnapshot.getName() + " of vm "
-                         + userVm.getInstanceName() + " failed due to " + e.getMessage());
+           }
+          if (err != null) {
+               log.error("Delete vm snapshot " + vmSnapshot.getName() + " of vm " + userVm.getInstanceName()
+               + " failed due to " + err);
+               throw new CloudRuntimeException("Delete vm snapshot " + vmSnapshot.getName() + " of vm " + userVm.getInstanceName() + " failed due to " + err);
           }
+          answer = new StorpoolDeleteVMSnapshotAnswer(deleteSnapshotCommand, volumeTOs);
+          processAnswer(vmSnapshotVO, userVm, answer, hostId);
+          long full_chain_size = 0;
+          for (VolumeObjectTO volumeTo : answer.getVolumeTOs()) {
+               publishUsageEvent(EventTypes.EVENT_VM_SNAPSHOT_DELETE, vmSnapshot, userVm, volumeTo);
+               full_chain_size += volumeTo.getSize();
+          }
+          publishUsageEvent(EventTypes.EVENT_VM_SNAPSHOT_OFF_PRIMARY, vmSnapshot, userVm, full_chain_size, 0L);
+          return true;
      }
 
      @Override
      public boolean deleteVMSnapshotFromDB(VMSnapshot vmSnapshot) {
-          log.debug("Deleting vm snapshot from db");
-          return deleteVMSnapshot(vmSnapshot);
+          return super.deleteVMSnapshotFromDB(vmSnapshot);
      }
 
      @Override
@@ -312,7 +286,7 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                Long hostId = vmSnapshotHelper.pickRunningHost(vmSnapshot.getVmId());
                GuestOSVO guestOS = guestOSDao.findById(userVm.getGuestOSId());
                StorpoolRevertToVMSnapshotCommand revertToSnapshotCommand = new StorpoolRevertToVMSnapshotCommand(
-                         vmInstanceName, userVm.getUuid(), vmSnapshotTO, volumeTOs, guestOS.getDisplayName());
+                         vmInstanceName, userVm.getUuid(), vmSnapshotTO, volumeTOs, guestOS.getDisplayName(),userVm.getId());
                HostVO host = hostDao.findById(hostId);
                GuestOSHypervisorVO guestOsMapping = guestOsHypervisorDao.findByOsIdAndHypervisor(guestOS.getId(),
                          host.getHypervisorType().toString(), host.getHypervisorVersion());
@@ -321,43 +295,66 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                } else {
                     revertToSnapshotCommand.setPlatformEmulator(guestOsMapping.getGuestOsName());
                }
+               StorpoolRevertToVMSnapshotAnswer answer = null;
+               String err = null;
+            for (VolumeObjectTO volumeObjectTO : volumeTOs) {
+                String snapshotName = vmInstanceName + "_"
+                        + StorpoolStorageAdaptor.getVolumeNameFromPath(volumeObjectTO.getPath());
+                String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(volumeObjectTO.getPath());
+                String backupSnapshot = volumeName + "to_be_removed";
+                Long size = volumeObjectTO.getSize();
+                log.info(String.format(
+                        "StorpoolVMSnapshotStrategy.reverVMSnapshot snapshotName=%s, volumeName=%s, backupSnapshot=%s, size=%s",
+                        snapshotName, volumeName, backupSnapshot, size));
+                StorpoolUtil.snapshotDelete(backupSnapshot);
+                SpApiResponse resp = StorpoolUtil.volumeSnapshot(volumeName, backupSnapshot);
+                if (resp.getError() != null) {
+                    err = String.format("Could not complete task error=%s", resp.getError());
+                    log.error("Snapshot could not complete revert task" + err);
+                }
 
-               StorpoolRevertToVMSnapshotAnswer answer = (StorpoolRevertToVMSnapshotAnswer) agentMgr.send(hostId,
-                         revertToSnapshotCommand);
-               if (answer != null && answer.getResult()) {
-                    processAnswer(vmSnapshotVO, userVm, answer, hostId);
-                    result = true;
-               } else {
-                    String errMsg = "Revert VM: " + userVm.getInstanceName() + " to snapshot: " + vmSnapshotVO.getName()
-                              + " failed";
-                    if (answer != null && answer.getDetails() != null)
-                         errMsg = errMsg + " due to " + answer.getDetails();
-                    log.error(errMsg);
-                    throw new CloudRuntimeException(errMsg);
-               }
-          } catch (OperationTimedoutException e) {
-               log.debug("Failed to revert vm snapshot", e);
-               throw new CloudRuntimeException(e.getMessage());
-          } catch (AgentUnavailableException e) {
-               log.debug("Failed to revert vm snapshot", e);
-               throw new CloudRuntimeException(e.getMessage());
-          } finally {
-               if (!result) {
-                    try {
-                         vmSnapshotHelper.vmSnapshotStateTransitTo(vmSnapshot, VMSnapshot.Event.OperationFailed);
-                    } catch (NoTransitionException e1) {
-                         log.error("Cannot set vm snapshot state due to: " + e1.getMessage());
+                resp = StorpoolUtil.volumeDelete(volumeName);
+                if (resp.getError() != null) {
+                    StorpoolUtil.snapshotDelete(backupSnapshot);
+                    err = String.format("Could not complete task error=%s", resp.getError());
+                    log.error("Delete volume Could not complete revert task" + err);
+                }
+
+                resp = StorpoolUtil.volumeCreateWithTags(volumeName, snapshotName, null, size, userVm.getId());
+                if (resp.getError() != null) {
+                    err = String.format("Could not complete task error=%s", resp.getError());
+                    log.error("Create Could not complete revert task" + err);
+                    resp = StorpoolUtil.volumeCreate(volumeName, backupSnapshot, null, size);
+                    if (resp.getError() != null) {
+                        err = String.format("Could not complete task error=%s", resp.getError());
+                    } else {
+                        StorpoolUtil.snapshotDelete(backupSnapshot);
                     }
-               } else {
-                    try {
-                         virtManager.advanceStart(userVm.getUuid(), new HashMap<VirtualMachineProfile.Param, Object>(),
-                                   null);
-                    } catch (Exception e) {
-                         throw new CloudRuntimeException("Could not start VM:" + e.getMessage());
-                    }
+                } else {
+                    StorpoolUtil.snapshotDelete(backupSnapshot);
+                }
+            }
+               if (err != null) {
+                    throw new CloudRuntimeException(err);
                }
-          }
-          return result;
+               answer = new StorpoolRevertToVMSnapshotAnswer(revertToSnapshotCommand, volumeTOs, null);
+               processAnswer(vmSnapshotVO, userVm, answer, hostId);
+               result = true;
+        } finally {
+            if (!result) {
+                try {
+                    vmSnapshotHelper.vmSnapshotStateTransitTo(vmSnapshot, VMSnapshot.Event.OperationFailed);
+                } catch (NoTransitionException e1) {
+                    log.error("Cannot set vm snapshot state due to: " + e1.getMessage());
+                }
+            } /*
+               * else { try { virtManager.advanceStart(userVm.getUuid(), new
+               * HashMap<VirtualMachineProfile.Param, Object>(), null); } catch (Exception e)
+               * { throw new CloudRuntimeException("Could not start VM:" + e.getMessage()); }
+               * }
+               */
+        }
+        return result;
      }
 
      @Override
@@ -375,8 +372,7 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                          } else if (as instanceof StorpoolDeleteVMSnapshotAnswer) {
                               StorpoolDeleteVMSnapshotAnswer answer = (StorpoolDeleteVMSnapshotAnswer) as;
                               finalizeDelete(vmSnapshot, answer.getVolumeTOs());
-                              vmSnapshotHelper.vmSnapshotStateTransitTo(vmSnapshot,
-                                        VMSnapshot.Event.OperationSucceeded);
+                              vmSnapshotDao.remove(vmSnapshot.getId());
                          } else if (as instanceof StorpoolRevertToVMSnapshotAnswer) {
                               StorpoolRevertToVMSnapshotAnswer answer = (StorpoolRevertToVMSnapshotAnswer) as;
                               finalizeRevert(vmSnapshot, answer.getVolumeTOs());
