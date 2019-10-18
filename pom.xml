@@ -56,11 +56,11 @@
 			<artifactId>aspectjrt</artifactId>
 			<version>1.8.13</version>
 		</dependency>
-		    <dependency>
-      <groupId>org.apache.cloudstack</groupId>
-      <artifactId>cloud-framework-config</artifactId>
-      <version>${project.version}</version>
-    </dependency>
+		<dependency>
+			<groupId>org.apache.cloudstack</groupId>
+			<artifactId>cloud-framework-config</artifactId>
+			<version>${project.version}</version>
+		</dependency>
 	</dependencies>
 	<build>
 		<plugins>
@@ -113,7 +113,7 @@
 				<version>1.11</version>
 				<configuration>
 					<showWeaveInfo>true</showWeaveInfo>
-					<outxml>true</outxml>
+					<!-- <outxml>true</outxml> -->
 					<complianceLevel>1.8</complianceLevel>
 					<source>1.8</source>
 					<target>1.8</target>
@@ -134,6 +134,9 @@
 						<goals>
 							<goal>compile</goal>
 						</goals>
+						<configuration>
+							<complianceLevel>1.8</complianceLevel>
+						</configuration>
 					</execution>
 				</executions>
 			</plugin>
@@ -156,35 +159,33 @@
 									<fileset
 										dir="${project.build.outputDirectory}/META-INF/cloudstack/api-planner"
 										includes="*" />
-										<fileset
+									<fileset
 										dir="${project.build.outputDirectory}/META-INF/cloudstack/system"
 										includes="*" />
-										<fileset
+									<fileset
 										dir="${project.build.outputDirectory}/META-INF/cloudstack/core"
 										includes="*" />
-					<!-- 							<fileset
+									<fileset
 										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-discoverer"
 										includes="*" />
-												<fileset
+									<fileset
 										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-network"
 										includes="*" />
-														<fileset
+									<fileset
 										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-template-adapter"
 										includes="*" />
-														<fileset
+									<fileset
 										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-alert-adapter-compute"
 										includes="*" />
-														<fileset
+									<fileset
 										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-api"
 										includes="*" />
-										
-														<fileset
+									<fileset
 										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-fencer"
-										includes="*" /> -->
-														<fileset
+										includes="*" />
+									<fileset
 										dir="${project.build.outputDirectory}/META-INF/cloudstack/"
 										includes="server*/**" />
-										
 								</delete>
 							</tasks>
 						</configuration>
