@@ -201,8 +201,9 @@ public class StorpoolVMSnapshotManagerImpl extends VMSnapshotManagerImpl {
           }
 
           VMSnapshot.Type vmSnapshotType = VMSnapshot.Type.Disk;
-          if (snapshotMemory && userVmVo.getState() == VirtualMachine.State.Running)
-               vmSnapshotType = VMSnapshot.Type.DiskAndMemory;
+          if (snapshotMemory && userVmVo.getState() == VirtualMachine.State.Running) {
+               throw new CloudRuntimeException("VM snapshot with memory is not supported operation");
+          }
 
           try {
                return createAndPersistVMSnapshot(userVmVo, vsDescription, vmSnapshotName, vsDisplayName,
