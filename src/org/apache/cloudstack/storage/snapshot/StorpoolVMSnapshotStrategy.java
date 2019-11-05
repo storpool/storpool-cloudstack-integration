@@ -65,6 +65,7 @@ import com.cloud.utils.db.TransactionStatus;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.fsm.NoTransitionException;
 import com.cloud.vm.UserVmVO;
+import com.cloud.vm.VirtualMachine;
 import com.cloud.vm.VirtualMachineManager;
 import com.cloud.vm.dao.UserVmDao;
 import com.cloud.vm.dao.VMInstanceDao;
@@ -267,6 +268,11 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
           log.debug("Revert vm snapshot");
           VMSnapshotVO vmSnapshotVO = (VMSnapshotVO) vmSnapshot;
           UserVmVO userVm = userVmDao.findById(vmSnapshot.getVmId());
+
+          if (userVm.getState() == VirtualMachine.State.Running && vmSnapshotVO.getType() == VMSnapshot.Type.Disk ) {
+              throw new CloudRuntimeException("Virtual machine should be in stopped state for revert operation");
+          }
+
           try {
                vmSnapshotHelper.vmSnapshotStateTransitTo(vmSnapshotVO, VMSnapshot.Event.RevertRequested);
           } catch (NoTransitionException e) {
