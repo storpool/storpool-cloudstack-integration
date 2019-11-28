@@ -671,11 +671,11 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             return;
         }
 
-        resp = StorpoolUtil.volumeCreate(volumeName, snapshotName, size, conn);
+        resp = StorpoolUtil.volumeCreateWithTags(volumeName, snapshotName, size, vinfo.getInstanceId(), conn);
         if (resp.getError() != null) {
             // Mmm, try to restore it first...
             String err = String.format("Could not revert StorPool volume %s to the %s snapshot: could not create the new volume: error %s", vinfo.getName(), snapshot.getName(), resp.getError());
-            resp = StorpoolUtil.volumeCreate(volumeName, backupSnapshotName, size, conn);
+            resp = StorpoolUtil.volumeCreateWithTags(volumeName, backupSnapshotName, size, vinfo.getInstanceId(), conn);
             if (resp.getError() != null)
                 err = String.format("%s.  Also, could not even restore the old volume: %s", err, resp.getError());
             else
