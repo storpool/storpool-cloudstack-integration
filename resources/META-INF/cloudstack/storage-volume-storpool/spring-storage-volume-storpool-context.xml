@@ -29,6 +29,6 @@
 		class="org.apache.cloudstack.storage.snapshot.StorpoolSnapshotStrategy" />
 	<bean id="storpoolVMSnapshotStrategy"
 		class="org.apache.cloudstack.storage.snapshot.StorpoolVMSnapshotStrategy" />
-	<bean id="storpoolVMSnapshotManagerImpl"
-		class="com.cloud.vm.StorpoolVMSnapshotManagerImpl" />
+	<bean id="storPoolReplaceCommandsHelper" primary="false"
+		class="org.apache.cloudstack.storage.helper.StorPoolReplaceCommandsHelper" init-method="init"/>
 </beans>

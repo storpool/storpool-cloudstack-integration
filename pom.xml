@@ -52,13 +52,13 @@
 			<version>2.2.6</version>
 		</dependency>
 		<dependency>
-			<groupId>org.aspectj</groupId>
-			<artifactId>aspectjrt</artifactId>
-			<version>1.8.13</version>
+			<groupId>org.apache.cloudstack</groupId>
+			<artifactId>cloud-framework-config</artifactId>
+			<version>${project.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.cloudstack</groupId>
-			<artifactId>cloud-framework-config</artifactId>
+			<artifactId>cloud-engine-components-api</artifactId>
 			<version>${project.version}</version>
 		</dependency>
 	</dependencies>
@@ -106,91 +106,6 @@
 						<dirty>-dirty</dirty>
 					</gitDescribe>
 				</configuration>
-			</plugin>
-			<plugin>
-				<groupId>org.codehaus.mojo</groupId>
-				<artifactId>aspectj-maven-plugin</artifactId>
-				<version>1.11</version>
-				<configuration>
-					<showWeaveInfo>true</showWeaveInfo>
-					<!-- <outxml>true</outxml> -->
-					<complianceLevel>1.8</complianceLevel>
-					<source>1.8</source>
-					<target>1.8</target>
-					<outxml>true</outxml>
-					<weaveDependencies>
-						<weaveDependency>
-							<groupId>org.apache.cloudstack</groupId>
-							<artifactId>cloud-api</artifactId>
-						</weaveDependency>
-						<weaveDependency>
-							<groupId>org.apache.cloudstack</groupId>
-							<artifactId>cloud-server</artifactId>
-						</weaveDependency>
-					</weaveDependencies>
-				</configuration>
-				<executions>
-					<execution>
-						<goals>
-							<goal>compile</goal>
-						</goals>
-						<configuration>
-							<complianceLevel>1.8</complianceLevel>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-antrun-plugin</artifactId>
-				<version>1.7</version>
-				<executions>
-					<execution>
-						<phase>compile</phase>
-						<goals>
-							<goal>run</goal>
-						</goals>
-						<configuration>
-							<tasks>
-								<delete>
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/api-config"
-										includes="*" />
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/api-planner"
-										includes="*" />
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/system"
-										includes="*" />
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/core"
-										includes="*" />
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-discoverer"
-										includes="*" />
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-network"
-										includes="*" />
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-template-adapter"
-										includes="*" />
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-alert-adapter-compute"
-										includes="*" />
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-api"
-										includes="*" />
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/server-fencer"
-										includes="*" />
-									<fileset
-										dir="${project.build.outputDirectory}/META-INF/cloudstack/"
-										includes="server*/**" />
-								</delete>
-							</tasks>
-						</configuration>
-					</execution>
-				</executions>
 			</plugin>
 		</plugins>
 	</build>
