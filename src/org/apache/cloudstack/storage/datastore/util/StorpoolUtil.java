@@ -162,6 +162,94 @@ public class StorpoolUtil {
         }
     }
 
+    public static class SpConnectionDesc {
+        private String hostPort;
+        private String authToken;
+        private String templateName;
+
+        public SpConnectionDesc(String url) {
+            String[] urlSplit = url.split(";");
+            if (urlSplit.length == 1 && !urlSplit[0].contains("=")) {
+                this.templateName = url;
+
+                Script sc = new Script("storpool_confget", 0, log);
+                OutputInterpreter.AllLinesParser parser = new OutputInterpreter.AllLinesParser();
+
+                final String err = sc.execute(parser);
+                if (err != null) {
+                    final String errMsg = String.format("Could not execute storpool_confget. Error: %s", err);
+                    log.warn(errMsg);
+                    throw new CloudRuntimeException(errMsg);
+                }
+
+                String SP_API_HOST = null;
+                String SP_API_PORT = null;
+
+                for (String line: parser.getLines().split("\n")) {
+                    String[] toks = line.split("=");
+                    if( toks.length != 2 ) {
+                        log.debug("unexpected line in storpool_confget output: " + line);
+                        continue;
+                    }
+
+                    switch (toks[0]) {
+                        case "SP_API_HTTP_HOST":
+                            SP_API_HOST = toks[1];
+                            break;
+
+                        case "SP_API_HTTP_PORT":
+                            SP_API_PORT = toks[1];
+                            break;
+
+                        case "SP_AUTH_TOKEN":
+                            this.authToken = toks[1];
+                            break;
+                    }
+                }
+
+                if (SP_API_HOST == null)
+                    throw new CloudRuntimeException("Invalid StorPool config. Missing SP_API_HTTP_HOST");
+                if (SP_API_PORT == null)
+                    throw new CloudRuntimeException("Invalid StorPool config. Missing SP_API_HTTP_PORT");
+                if (this.authToken == null)
+                    throw new CloudRuntimeException("Invalid StorPool config. Missing SP_AUTH_TOKEN");
+
+                this.hostPort = SP_API_HOST + ":" + SP_API_PORT;
+            } else {
+                for (String kv : urlSplit) {
+                    String[] toks = kv.split("=");
+                    if (toks.length != 2)
+                        continue;
+                    switch (toks[0]) {
+                        case "SP_API_HTTP":
+                            this.hostPort = toks[1];
+                            break;
+
+                        case "SP_AUTH_TOKEN":
+                            this.authToken = toks[1];
+                            break;
+
+                        case "SP_TEMPLATE":
+                            this.templateName = toks[1];
+                            break;
+                    }
+                }
+            }
+        }
+
+        public String getHostPort() {
+            return this.hostPort;
+        }
+
+        public String getAuthToken() {
+            return this.authToken;
+        }
+
+        public String getTemplateName() {
+            return this.templateName;
+        }
+    }
+
     public static class SpApiResponse {
         private SpApiError error;
         public JsonElement fullJson;
@@ -205,62 +293,30 @@ public class StorpoolUtil {
 //        throw new CloudRuntimeException(msg);
 //    }
 
-    private static SpApiResponse spApiRequest(HttpRequestBase req, String query) {
+    private static SpApiResponse spApiRequest(HttpRequestBase req, String query, SpConnectionDesc conn) {
         String SP_API_HOST = null;
         String SP_API_PORT = null;
         String SP_AUTH_TOKEN = null;
 
-        Script sc = new Script("storpool_confget", 0, log);
-        OutputInterpreter.AllLinesParser parser = new OutputInterpreter.AllLinesParser();
+        if (conn == null)
+            conn = new SpConnectionDesc("");
 
-        final String err = sc.execute(parser);
-        if (err != null) {
-            final String errMsg = String.format("Could not execute storpool_confget. Error: %s", err);
-            log.warn(errMsg);
-            throw new CloudRuntimeException(errMsg);
-        }
 
-        for (String line: parser.getLines().split("\n")) {
-            String[] toks = line.split("=");
-            if( toks.length != 2 ) {
-                log.debug("unexpected line in storpool_confget output: " + line);
-                continue;
-            }
-
-            switch (toks[0]) {
-                case "SP_API_HTTP_HOST":
-                    SP_API_HOST = toks[1];
-                    break;
-
-                case "SP_API_HTTP_PORT":
-                    SP_API_PORT = toks[1];
-                    break;
-
-                case "SP_AUTH_TOKEN":
-                    SP_AUTH_TOKEN = toks[1];
-                    break;
-            }
-        }
-
-        if (SP_API_HOST == null) {
+        if (conn.getHostPort() == null) {
             throw new CloudRuntimeException("Invalid StorPool config. Missing SP_API_HTTP_HOST");
         }
 
-        if (SP_API_PORT == null) {
-            throw new CloudRuntimeException("Invalid StorPool config. Missing SP_API_HTTP_PORT");
-        }
-
-        if (SP_AUTH_TOKEN == null) {
+        if (conn.getAuthToken() == null) {
             throw new CloudRuntimeException("Invalid StorPool config. Missing SP_AUTH_TOKEN");
         }
 
 
         try (DefaultHttpClient httpClient = new DefaultHttpClient()) {
-            final String qry = String.format("http://%s:%s/ctrl/1.0/%s", SP_API_HOST, SP_API_PORT, query);
+            final String qry = String.format("http://%s/ctrl/1.0/%s", conn.getHostPort(), query);
             final URI uri = new URI(qry);
 
             req.setURI(uri);
-            req.addHeader("Authorization", String.format("Storpool v1:%s", SP_AUTH_TOKEN));
+            req.addHeader("Authorization", String.format("Storpool v1:%s", conn.getAuthToken()));
 
             final HttpResponse resp = httpClient.execute(req);
 //            Storpool error message is returned in response body, so try and extract it
@@ -288,11 +344,11 @@ public class StorpoolUtil {
         }
     }
 
-    private static SpApiResponse GET(String query) {
-        return spApiRequest(new HttpGet(), query);
+    private static SpApiResponse GET(String query, SpConnectionDesc conn) {
+        return spApiRequest(new HttpGet(), query, conn);
     }
 
-    private static SpApiResponse POST(String query, Object json) {
+    private static SpApiResponse POST(String query, Object json, SpConnectionDesc conn) {
         HttpPost req = new HttpPost();
         if (json != null) {
             Gson gson = new Gson();
@@ -302,93 +358,93 @@ public class StorpoolUtil {
             req.setEntity(input);
         }
 
-        return spApiRequest(req, query);
+        return spApiRequest(req, query, conn);
     }
 
 
-    public static boolean templateExists(final String name) {
-        SpApiResponse resp = GET("VolumeTemplateDescribe/" + name);
+    public static boolean templateExists(SpConnectionDesc conn) {
+        SpApiResponse resp = GET("VolumeTemplateDescribe/" + conn.getTemplateName(), conn);
         return resp.getError() == null;
     }
 
-    public static boolean volumeExists(final String name) {
-        SpApiResponse resp = GET("Volume/" + name);
+    public static boolean volumeExists(final String name, SpConnectionDesc conn) {
+        SpApiResponse resp = GET("Volume/" + name, conn);
         return resp.getError() == null;
     }
 
-    public static boolean snapshotExists(final String name) {
-        SpApiResponse resp = GET("Snapshot/" + name);
+    public static boolean snapshotExists(final String name, SpConnectionDesc conn) {
+        SpApiResponse resp = GET("Snapshot/" + name, conn);
         return resp.getError() == null;
     }
 
-    public static long snapshotSize( final String name ) {
-        SpApiResponse resp = GET("Snapshot/" + name);
+    public static long snapshotSize(final String name, SpConnectionDesc conn) {
+        SpApiResponse resp = GET("Snapshot/" + name, conn);
         JsonObject obj = resp.fullJson.getAsJsonObject();
 
         JsonObject data = obj.getAsJsonArray("data").get(0).getAsJsonObject();
         return data.getAsJsonPrimitive("size").getAsLong();
     }
 
-    public static SpApiResponse volumeCreate(final String name, final String parentName, final String template, final Long size) {
+    public static SpApiResponse volumeCreate(final String name, final String parentName, final Long size, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
         json.put("name", name);
         json.put("parent", parentName);
-        json.put("template", template);
+        json.put("template", conn.getTemplateName());
         json.put("size", size);
-        return POST("VolumeCreate", json);
+        return POST("VolumeCreate", json, conn);
     }
 
-    public static SpApiResponse volumeCreateWithTags(final String name, final String parentName, final String template, final Long size, Long vmID) {
+    public static SpApiResponse volumeCreateWithTags(final String name, final String parentName, final Long size, Long vmID, SpConnectionDesc conn) {
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("name", name);
         json.put("parent", parentName);
         json.put("size", size);
-        json.put("template", template);
+        json.put("template", conn.getTemplateName());
         Map<String, String> tags = new HashMap<>();
         tags.put("cvm", vmID != null ? Long.toString(vmID) : "detached");
         json.put("tags", tags);
-        return POST("VolumeCreate", json);
+        return POST("VolumeCreate", json, conn);
     }
 
-    public static SpApiResponse volumeCopy(final String name, final String baseOn) {
+    public static SpApiResponse volumeCopy(final String name, final String baseOn, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
         json.put("baseOn", baseOn);
         json.put("name", name);
-        return POST("VolumeCreate", json);
+        return POST("VolumeCreate", json, conn);
     }
 
-    public static SpApiResponse volumeUpdate(final String name, final Long newSize, final Boolean shrinkOk) {
+    public static SpApiResponse volumeUpdate(final String name, final Long newSize, final Boolean shrinkOk, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
         json.put("size", newSize);
         json.put("shrinkOk", shrinkOk);
 
-        return POST("VolumeUpdate/" + name, json);
+        return POST("VolumeUpdate/" + name, json, conn);
     }
 
-    public static SpApiResponse volumeUpadateTags(final String name, final Long vmId) {
+    public static SpApiResponse volumeUpadateTags(final String name, final Long vmId, SpConnectionDesc conn) {
          Map<String, Object> json = new HashMap<>();
          Map<String, String> tags = new HashMap<>();
          tags.put("cvm", vmId != null ? Long.toString(vmId) : "detached");
          json.put("tags", tags);
-         return POST("VolumeUpdate/" + name, json);
+         return POST("VolumeUpdate/" + name, json, conn);
     }
 
-    public static SpApiResponse snapshotUpadateTags(final String name, final Long vmId) {
+    public static SpApiResponse snapshotUpadateTags(final String name, final Long vmId, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
         Map<String, String> tags = new HashMap<>();
         tags.put("cvm", vmId != null ? Long.toString(vmId) : "detached");
         json.put("tags", tags);
-        return POST("SnapshotUpdate/" + name, json);
+        return POST("SnapshotUpdate/" + name, json, conn);
    }
 
-    public static SpApiResponse volumeSnapshot(final String volumeName, final String snapshotName) {
+    public static SpApiResponse volumeSnapshot(final String volumeName, final String snapshotName, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
         json.put("name", snapshotName);
 
-        return POST("VolumeSnapshot/" + volumeName, json);
+        return POST("VolumeSnapshot/" + volumeName, json, conn);
     }
 
-    public static SpApiResponse volumesGroupSnapshot(final List<VolumeObjectTO> volumeTOs, final Long vmId, final String snapshotName) {
+    public static SpApiResponse volumesGroupSnapshot(final List<VolumeObjectTO> volumeTOs, final Long vmId, final String snapshotName, SpConnectionDesc conn) {
          Map<String,Object> json = new LinkedHashMap<>();
          Map<String, Object> tags = new HashMap<>();
          List<Map<String, Object>> volumes = new ArrayList<>();
@@ -404,21 +460,21 @@ public class StorpoolUtil {
          json.put("tags", tags);
          json.put("volumes", volumes);
          log.info("json:"+ json);
-         return POST("VolumesGroupSnapshot", json);
+         return POST("VolumesGroupSnapshot", json, conn);
 }
 
-    public static SpApiResponse volumeFreeze(final String volumeName) {
-        return POST("VolumeFreeze/" + volumeName, null);
+    public static SpApiResponse volumeFreeze(final String volumeName, SpConnectionDesc conn) {
+        return POST("VolumeFreeze/" + volumeName, null, conn);
     }
 
-    public static SpApiResponse volumeDelete(final String name) {
-        detachAllForced(name, false);
-        return POST("VolumeDelete/" + name, null);
+    public static SpApiResponse volumeDelete(final String name, SpConnectionDesc conn) {
+        detachAllForced(name, false, conn);
+        return POST("VolumeDelete/" + name, null, conn);
     }
 
-    public static SpApiResponse snapshotDelete(final String name) {
-        detachAllForced(name, true);
-        return POST("SnapshotDelete/" + name, null);
+    public static SpApiResponse snapshotDelete(final String name, SpConnectionDesc conn) {
+        detachAllForced(name, true, conn);
+        return POST("SnapshotDelete/" + name, null, conn);
     }
 
 /*
@@ -437,7 +493,7 @@ public class StorpoolUtil {
         return POST("VolumesReassign", json);
     }
 */
-    private static void detachAllForced(final String name, final boolean snapshot) {
+    private static void detachAllForced(final String name, final boolean snapshot, SpConnectionDesc conn) {
         final String type = snapshot ? "snapshot" : "volume";
         List<Map<String, Object>> json = new ArrayList<>();
         Map<String, Object> reassignDesc = new HashMap<>();
@@ -446,7 +502,7 @@ public class StorpoolUtil {
         reassignDesc.put("force", true);
         json.add(reassignDesc);
 
-        final SpApiResponse resp = POST("VolumesReassign", json);
+        final SpApiResponse resp = POST("VolumesReassign", json, conn);
         if (resp.getError() != null) {
             final String err = String.format("Force detach failed for %s %s. Error: %s", type, name, resp.getError());
             spLog(err);

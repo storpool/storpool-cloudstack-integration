@@ -28,7 +28,7 @@ public class StorpoolStorageListner {
                     vol.getInstanceId(), vol.getPath()));
             String name = StorpoolStorageAdaptor.getVolumeNameFromPath(vol.getPath());
             if (name != null) {
-                StorpoolUtil.volumeUpadateTags(name, vmId);
+                StorpoolUtil.volumeUpadateTags(name, vmId, null);
             }
         }
     }
