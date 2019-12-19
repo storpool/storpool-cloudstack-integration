@@ -401,7 +401,7 @@ public class StorpoolUtil {
         json.put("size", size);
         json.put("template", conn.getTemplateName());
         Map<String, String> tags = new HashMap<>();
-        tags.put("cvm", vmID != null ? Long.toString(vmID) : "detached");
+        tags.put("cvm", vmID != null ? Long.toString(vmID) : "");
         json.put("tags", tags);
         return POST("VolumeCreate", json, conn);
     }
@@ -424,7 +424,7 @@ public class StorpoolUtil {
     public static SpApiResponse volumeUpadateTags(final String name, final Long vmId, SpConnectionDesc conn) {
          Map<String, Object> json = new HashMap<>();
          Map<String, String> tags = new HashMap<>();
-         tags.put("cvm", vmId != null ? Long.toString(vmId) : "detached");
+         tags.put("cvm", vmId != null ? Long.toString(vmId) : "");
          json.put("tags", tags);
          return POST("VolumeUpdate/" + name, json, conn);
     }
@@ -432,7 +432,7 @@ public class StorpoolUtil {
     public static SpApiResponse snapshotUpadateTags(final String name, final Long vmId, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
         Map<String, String> tags = new HashMap<>();
-        tags.put("cvm", vmId != null ? Long.toString(vmId) : "detached");
+        tags.put("cvm", vmId != null ? Long.toString(vmId) : "");
         json.put("tags", tags);
         return POST("SnapshotUpdate/" + name, json, conn);
    }
