@@ -24,9 +24,13 @@ import com.cloud.storage.Snapshot;
 import com.cloud.storage.SnapshotVO;
 import com.cloud.storage.dao.SnapshotDao;
 
+import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
+
 import org.apache.cloudstack.engine.subsystem.api.storage.StrategyPriority;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
+import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
 
 
 @Component
@@ -34,6 +38,7 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
     private static final Logger log = Logger.getLogger(StorpoolSnapshotStrategy.class);
 
     @Inject private SnapshotDao _snapshotDao;
+    @Inject private PrimaryDataStoreDao _primaryDataStoreDao;
 
     @Override
     public boolean deleteSnapshot(Long snapshotId) {
@@ -45,11 +50,16 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
         final boolean res = super.deleteSnapshot(snapshotId);
         if (res) {
             // clean-up snapshot from Storpool storage pools
-            SpApiResponse resp = StorpoolUtil.snapshotDelete(name);
-            if (resp.getError() != null) {
-                final String err = String.format("Failed to clean-up Storpool snapshot %s. Error: %s", name, resp.getError());
-                log.error(err);
-                StorpoolUtil.spLog(err);
+            for (StoragePoolVO sp : _primaryDataStoreDao.findPoolsByProvider("StorPool")) {
+                if( sp.getDataCenterId() != snapshotVO.getDataCenterId() )
+                    continue;
+                SpConnectionDesc conn = new SpConnectionDesc(sp.getUuid());
+                SpApiResponse resp = StorpoolUtil.snapshotDelete(name, conn);
+                if (resp.getError() != null) {
+                    final String err = String.format("Failed to clean-up Storpool snapshot %s. Error: %s", name, resp.getError());
+                    log.error(err);
+                    StorpoolUtil.spLog(err);
+                }
             }
         }
 
@@ -64,6 +74,16 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
             return StrategyPriority.CANT_HANDLE;
         }
 
-        return StorpoolUtil.snapshotExists(snapshot.getUuid()) ? StrategyPriority.HIGHEST : StrategyPriority.CANT_HANDLE;
+        final SnapshotVO snapshotVO = _snapshotDao.findById(snapshot.getSnapshotId());
+
+        for (StoragePoolVO sp : _primaryDataStoreDao.findPoolsByProvider("StorPool")) {
+                if( sp.getDataCenterId() != snapshotVO.getDataCenterId() )
+                    continue;
+                SpConnectionDesc conn = new SpConnectionDesc(sp.getUuid());
+                if (StorpoolUtil.snapshotExists(snapshot.getUuid(), conn))
+                    return StrategyPriority.HIGHEST;
+            }
+
+        return StrategyPriority.CANT_HANDLE;
     }
 }

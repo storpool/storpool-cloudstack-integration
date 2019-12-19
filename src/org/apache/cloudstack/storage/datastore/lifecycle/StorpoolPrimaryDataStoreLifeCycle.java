@@ -36,7 +36,11 @@ import org.apache.cloudstack.engine.subsystem.api.storage.PrimaryDataStoreLifeCy
 import org.apache.cloudstack.engine.subsystem.api.storage.PrimaryDataStoreParameters;
 import org.apache.cloudstack.engine.subsystem.api.storage.ZoneScope;
 import org.apache.cloudstack.storage.volume.datastore.PrimaryDataStoreHelper;
+import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
+import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
+
 
 
 public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycle {
@@ -44,6 +48,7 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
 
     @Inject protected PrimaryDataStoreHelper dataStoreHelper;
     @Inject protected StoragePoolAutomation storagePoolAutmation;
+    @Inject private PrimaryDataStoreDao _primaryDataStoreDao;
 
     @Override
     public DataStore initialize(Map<String, Object> dsInfos) {
@@ -60,8 +65,24 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
         Long zoneId = (Long)dsInfos.get("zoneId");
 
         String url = (String)dsInfos.get("url");
-        if (!StorpoolUtil.templateExists(url)) {
-            throw new IllegalArgumentException("No such storpool template " + url);
+        SpConnectionDesc conn = new SpConnectionDesc(url);
+        if (conn.getHostPort() == null)
+            throw new IllegalArgumentException("No SP_API_HTTP");
+
+        if (conn.getAuthToken() == null)
+            throw new IllegalArgumentException("No SP_AUTH_TOKEN");
+
+        if (conn.getTemplateName() == null)
+            throw new IllegalArgumentException("No SP_TEMPLATE");
+
+        if (!StorpoolUtil.templateExists(conn)) {
+            throw new IllegalArgumentException("No such storpool template " + conn.getTemplateName() + " or credentials are invalid");
+        }
+
+        for (StoragePoolVO sp : _primaryDataStoreDao.findPoolsByProvider("StorPool")) {
+            SpConnectionDesc old = new SpConnectionDesc(sp.getUuid());
+            if( old.getHostPort().equals(conn.getHostPort()) && old.getTemplateName().equals(conn.getTemplateName()) )
+                throw new IllegalArgumentException("StorPool cluster and template already in use by pool " + sp.getName());
         }
 
         Long capacityBytes = (Long)dsInfos.get("capacityBytes");
