@@ -70,7 +70,9 @@ import com.cloud.storage.ResizeVolumePayload;
 import com.cloud.storage.Storage.StoragePoolType;
 import com.cloud.storage.StorageManager;
 import com.cloud.storage.StoragePool;
+import com.cloud.storage.VMTemplateStoragePoolVO;
 import com.cloud.storage.VolumeVO;
+import com.cloud.storage.dao.VMTemplatePoolDao;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.utils.NumbersUtil;
 import com.cloud.vm.VirtualMachineManager;
@@ -84,6 +86,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     @Inject PrimaryDataStoreDao primaryStoreDao;
     @Inject EndPointSelector selector;
     @Inject ConfigurationDao configDao;
+    @Inject VMTemplatePoolDao vmTemplatePoolDao;
 
     @Override
     public Map<String, String> getCapabilities() {
@@ -441,9 +444,10 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             } else if (srcType == DataObjectType.TEMPLATE && dstType == DataObjectType.VOLUME) {
                 // create volume from template on Storpool PRIMARY
                 TemplateInfo tinfo = (TemplateInfo)srcData;
-                final String parentName = tinfo.getUuid();
 
                 VolumeInfo vinfo = (VolumeInfo)dstData;
+                VMTemplateStoragePoolVO templStoragePoolVO = vmTemplatePoolDao.findByPoolTemplate(vinfo.getPoolId(), tinfo.getId());
+                final String parentName = StorpoolStorageAdaptor.getVolumeNameFromPath(templStoragePoolVO.getInstallPath());
                 final String name = vinfo.getUuid();
                 SpConnectionDesc conn = new SpConnectionDesc(vinfo.getDataStore().getUuid());
 
@@ -466,7 +470,6 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         size = snapshotSize;
                     }
                     StorpoolUtil.spLog(String.format("volume size is: %d", size));
-                    Long vmId = vinfo.getInstanceId();
                     SpApiResponse resp = StorpoolUtil.volumeCreate(name, parentName, size, conn);
                     if (resp.getError() == null) {
                         updateStoragePool(dstData.getDataStore().getId(), vinfo.getSize());
