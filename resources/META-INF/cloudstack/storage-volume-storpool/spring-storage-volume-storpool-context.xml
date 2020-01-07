@@ -21,10 +21,6 @@
 	<bean id="storpoolPrimaryDataStoreProvider"
 		class="org.apache.cloudstack.storage.datastore.provider.StorpoolPrimaryDataStoreProvider" />
 
-	<bean id="storpoolVMSnapshotCmdListener"
-		class="com.cloud.vm.StorpoolVMSnapshotCmdListener"
-		factory-method="aspectOf">
-	</bean>
 	<bean id="storpoolSnapshotStrategy"
 		class="org.apache.cloudstack.storage.snapshot.StorpoolSnapshotStrategy" />
 	<bean id="storpoolVMSnapshotStrategy"
