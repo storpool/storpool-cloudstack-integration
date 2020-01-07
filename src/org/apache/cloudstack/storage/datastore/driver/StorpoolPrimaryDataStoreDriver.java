@@ -401,11 +401,12 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             } else if (srcType == DataObjectType.TEMPLATE && dstType == DataObjectType.TEMPLATE) {
                 // copy template to primary storage
                 TemplateInfo tinfo = (TemplateInfo)dstData;
-                String name = tinfo.getUuid();
                 Long size = tinfo.getSize();
                 if(size == null || size == 0)
                     size = 1L*1024*1024*1024;
                 SpConnectionDesc conn = new SpConnectionDesc(dstData.getDataStore().getUuid());
+
+                String name = conn.getTemplateName() + "-" + tinfo.getUuid();
 
                 SpApiResponse resp = StorpoolUtil.volumeCreate(name, null, size, conn);
                 if (resp.getError() != null) {
