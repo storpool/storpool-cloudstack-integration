@@ -17,20 +17,21 @@
 package org.apache.cloudstack.storage.snapshot;
 
 import javax.inject.Inject;
+
+import org.apache.cloudstack.engine.subsystem.api.storage.SnapshotInfo;
+import org.apache.cloudstack.engine.subsystem.api.storage.StrategyPriority;
+import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
+import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
+import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
+import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
 import org.apache.log4j.Logger;
 import org.springframework.stereotype.Component;
 
 import com.cloud.storage.Snapshot;
 import com.cloud.storage.SnapshotVO;
 import com.cloud.storage.dao.SnapshotDao;
-
-import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
-import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
-
-import org.apache.cloudstack.engine.subsystem.api.storage.StrategyPriority;
-import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
-import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
-import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
+import com.cloud.utils.fsm.NoTransitionException;
 
 
 @Component
@@ -39,6 +40,23 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
 
     @Inject private SnapshotDao _snapshotDao;
     @Inject private PrimaryDataStoreDao _primaryDataStoreDao;
+
+    @Override
+    public SnapshotInfo backupSnapshot(SnapshotInfo snapshotInfo) {
+        SnapshotObject snapshotObj = (SnapshotObject) snapshotInfo;
+        try {
+            snapshotObj.processEvent(Snapshot.Event.BackupToSecondary);
+            snapshotObj.processEvent(Snapshot.Event.OperationSucceeded);
+        } catch (NoTransitionException ex) {
+            StorpoolUtil.spLog("Failed to change state: " + ex.toString());
+            try {
+                snapshotObj.processEvent(Snapshot.Event.OperationFailed);
+            } catch (NoTransitionException ex2) {
+                StorpoolUtil.spLog("Failed to change state: " + ex2.toString());
+            }
+        }
+        return snapshotInfo;
+    }
 
     @Override
     public boolean deleteSnapshot(Long snapshotId) {
@@ -69,6 +87,10 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
     @Override
     public StrategyPriority canHandle(Snapshot snapshot, SnapshotOperation op) {
         StorpoolUtil.spLog("StorpoolSnapshotStrategy.canHandle: snapshot=%s, uuid=%s, op=%s", snapshot.getName(), snapshot.getUuid(), op);
+
+        if (op == SnapshotOperation.TAKE && !BackupManager.BackupOnSecondary.value()) {
+            return StrategyPriority.HIGHEST;
+        }
 
         if (op != SnapshotOperation.DELETE) {
             return StrategyPriority.CANT_HANDLE;

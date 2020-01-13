@@ -25,6 +25,10 @@
 		class="org.apache.cloudstack.storage.snapshot.StorpoolSnapshotStrategy" />
 	<bean id="storpoolVMSnapshotStrategy"
 		class="org.apache.cloudstack.storage.snapshot.StorpoolVMSnapshotStrategy" />
+	<bean id="backupManager"
+	class="org.apache.cloudstack.storage.snapshot.BackupManager" />
+	<bean id="storpoolDataMotionStrategy"
+		class="org.apache.cloudstack.storage.motion.StorPoolDataMotionStrategy" />
 	<bean id="storPoolReplaceCommandsHelper" primary="false"
 		class="org.apache.cloudstack.storage.helper.StorPoolReplaceCommandsHelper" init-method="init"/>
 </beans>
