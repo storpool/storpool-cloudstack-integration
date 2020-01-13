@@ -45,6 +45,7 @@ import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
+import org.apache.cloudstack.storage.snapshot.BackupManager;
 import org.apache.cloudstack.storage.to.PrimaryDataStoreTO;
 import org.apache.cloudstack.storage.to.SnapshotObjectTO;
 import org.apache.cloudstack.storage.to.TemplateObjectTO;
@@ -366,25 +367,31 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     err = String.format("Could not create Storpool volume %s from snapshot %s. Error: %s", volumeName, snapshotName, resp.getError());
                 }
             } else if (srcType == DataObjectType.SNAPSHOT && dstType == DataObjectType.SNAPSHOT) {
-                // copy snapshot to secondary storage (backup snapshot)
-                cmd = new StorpoolBackupSnapshotCommand(srcData.getTO(), dstData.getTO(), getTimeout(Config.BackupSnapshotWait), VirtualMachineManager.ExecuteInSequence.value());
-
-                EndPoint ep = selector.select(srcData, dstData);
-                if (ep == null) {
-                    err = "No remote endpoint to send command, check if host or ssvm is down?";
+                // bypass secondary storage
+                if (BackupManager.BypassSecondaryStorage.value()) {
+                    SnapshotObjectTO snapshot = (SnapshotObjectTO) srcData.getTO();
+                    answer = new CopyCmdAnswer(snapshot);
                 } else {
-                    answer = ep.sendMessage(cmd);
-                    // if error during snapshot backup, cleanup the StorPool snapshot
-                    if( answer != null && !answer.getResult() ) {
-                        final String snapName = ((SnapshotInfo)srcData).getUuid();
-                        StorpoolUtil.spLog(String.format("Error while backing-up snapshot '%s' - cleaning up StorPool snapshot. Error: %s", snapName, answer.getDetails()));
-                        SpConnectionDesc conn = new SpConnectionDesc(srcData.getDataStore().getUuid());
-
-                        SpApiResponse resp = StorpoolUtil.snapshotDelete(snapName, conn);
-                        if( resp.getError() != null ) {
-                            final String err2 = String.format("Failed to cleanup StorPool snapshot '%s'. Error: %s.", snapName, resp.getError());
-                            log.error(err2);
-                            StorpoolUtil.spLog(err2);
+                    // copy snapshot to secondary storage (backup snapshot)
+                    cmd = new StorpoolBackupSnapshotCommand(srcData.getTO(), dstData.getTO(), getTimeout(Config.BackupSnapshotWait), VirtualMachineManager.ExecuteInSequence.value());
+    
+                    EndPoint ep = selector.select(srcData, dstData);
+                    if (ep == null) {
+                        err = "No remote endpoint to send command, check if host or ssvm is down?";
+                    } else {
+                        answer = ep.sendMessage(cmd);
+                        // if error during snapshot backup, cleanup the StorPool snapshot
+                        if( answer != null && !answer.getResult() ) {
+                            final String snapName = ((SnapshotInfo)srcData).getUuid();
+                            StorpoolUtil.spLog(String.format("Error while backing-up snapshot '%s' - cleaning up StorPool snapshot. Error: %s", snapName, answer.getDetails()));
+                            SpConnectionDesc conn = new SpConnectionDesc(srcData.getDataStore().getUuid());
+    
+                            SpApiResponse resp = StorpoolUtil.snapshotDelete(snapName, conn);
+                            if( resp.getError() != null ) {
+                                final String err2 = String.format("Failed to cleanup StorPool snapshot '%s'. Error: %s.", snapName, resp.getError());
+                                log.error(err2);
+                                StorpoolUtil.spLog(err2);
+                            }
                         }
                     }
                 }
@@ -406,39 +413,59 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     size = 1L*1024*1024*1024;
                 SpConnectionDesc conn = new SpConnectionDesc(dstData.getDataStore().getUuid());
 
-                String name = conn.getTemplateName() + "-" + tinfo.getUuid();
+                String name = tinfo.getUuid();
 
-                SpApiResponse resp = StorpoolUtil.volumeCreate(name, null, size, conn);
-                if (resp.getError() != null) {
-                    err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
-                } else {
-                    TemplateObjectTO dstTO = (TemplateObjectTO)dstData.getTO();
-                    dstTO.setPath(StorpoolUtil.devPath(name));
-                    dstTO.setSize(size);
-
-                    cmd = new StorpoolDownloadTemplateCommand(srcData.getTO(), dstTO, getTimeout(Config.PrimaryStorageDownloadWait), VirtualMachineManager.ExecuteInSequence.value());
-
-                    EndPoint ep = selector.select(srcData, dstData);
-                    if (ep == null) {
-                        err = "No remote endpoint to send command, check if host or ssvm is down?";
+                if (StorpoolUtil.snapshotExists(name, conn) && BackupManager.BypassSecondaryStorage.value()) {
+                    name = conn.getTemplateName() + "-" + tinfo.getUuid();
+                    SpApiResponse resp = StorpoolUtil.volumeCreate(name, tinfo.getUuid(), size, conn);
+                    if (resp.getError() != null) {
+                        err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
                     } else {
-                        answer = ep.sendMessage(cmd);
-                    }
-
-                    if (answer != null && answer.getResult()) {
-                        // successfully downloaded template to primary storage
                         SpApiResponse resp2 = StorpoolUtil.volumeFreeze(name, conn);
                         if (resp2.getError() != null) {
                             err = String.format("Could not freeze Storpool volume %s. Error: %s", name, resp2.getError());
                         }
-                    } else {
-                        err = answer != null ? answer.getDetails() : "Unknown error while downloading template. Null answer returned.";
+                        log.info(String.format("Storpool volume=%s exists. Creating template on Storpool with name=%s",
+                                tinfo.getUuid(), name));
+                        TemplateObjectTO dstTO = (TemplateObjectTO) dstData.getTO();
+                        dstTO.setPath(StorpoolUtil.devPath(name));
+                        dstTO.setSize(size);
+                        answer = new CopyCmdAnswer(dstTO);
                     }
+                }else {
+                    name = conn.getTemplateName() + "-" + tinfo.getUuid();
+                    SpApiResponse resp = StorpoolUtil.volumeCreate(name, null, size, conn);
+                    if (resp.getError() != null) {
+                        err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
+                    } else {
+                        TemplateObjectTO dstTO = (TemplateObjectTO)dstData.getTO();
+                        dstTO.setPath(StorpoolUtil.devPath(name));
+                        dstTO.setSize(size);
 
-                    if (err != null) {
-                        SpApiResponse resp3 = StorpoolUtil.volumeDelete(name, conn);
-                        if (resp3.getError() != null) {
-                            log.warn(String.format("Could not clean-up Storpool volume %s. Error: %s", name, resp3.getError()));
+                        cmd = new StorpoolDownloadTemplateCommand(srcData.getTO(), dstTO, getTimeout(Config.PrimaryStorageDownloadWait), VirtualMachineManager.ExecuteInSequence.value());
+
+                        EndPoint ep = selector.select(srcData, dstData);
+                        if (ep == null) {
+                            err = "No remote endpoint to send command, check if host or ssvm is down?";
+                        } else {
+                            answer = ep.sendMessage(cmd);
+                        }
+
+                        if (answer != null && answer.getResult()) {
+                            // successfully downloaded template to primary storage
+                            SpApiResponse resp2 = StorpoolUtil.volumeFreeze(name, conn);
+                            if (resp2.getError() != null) {
+                                err = String.format("Could not freeze Storpool volume %s. Error: %s", name, resp2.getError());
+                            }
+                        } else {
+                            err = answer != null ? answer.getDetails() : "Unknown error while downloading template. Null answer returned.";
+                        }
+
+                        if (err != null) {
+                            SpApiResponse resp3 = StorpoolUtil.volumeDelete(name, conn);
+                            if (resp3.getError() != null) {
+                                log.warn(String.format("Could not clean-up Storpool volume %s. Error: %s", name, resp3.getError()));
+                            }
                         }
                     }
                 }
