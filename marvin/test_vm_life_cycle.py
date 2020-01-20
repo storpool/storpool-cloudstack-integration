@@ -74,7 +74,7 @@ class TestData():
     serviceOfferingOnly = "serviceOfferingOnly"
     scope = "scope"
     StorPool = "storpool"
-    storageTag = ["cloudstack-test", "cloudLocal", "shared-tags"]
+    storageTag = ["cloud-test-dev-2", "cloud-test-dev-1", "shared-tags"]
     tags = "tags"
     template = "template"
     virtualMachine = "virtualmachine"
@@ -85,18 +85,18 @@ class TestData():
     def __init__(self):
         self.testdata = {
             TestData.primaryStorage: {
-                "name": "cloudstack-test",
+                "name": "cloud-test-dev-1",
                 TestData.scope: "ZONE",
-                "url": "cloudstack-test",
+                "url": "cloud-test-dev-1",
                 TestData.provider: "StorPool",
                 "path": "/dev/storpool",
                 TestData.capacityBytes: 2251799813685248,
                 TestData.hypervisor: "KVM"
             },
             TestData.primaryStorage2: {
-                "name": "cloudLocal",
+                "name": "cloud-test-dev-2",
                 TestData.scope: "ZONE",
-                "url": "cloudLocal",
+                "url": "cloud-test-dev-2",
                 TestData.provider: "StorPool",
                 "path": "/dev/storpool",
                 TestData.capacityBytes: 2251799813685248,
@@ -269,7 +269,7 @@ class TestDeployVM(cloudstackTestCase):
 
         service_offering_only = list_service_offering(
             cls.apiclient,
-            name="cloudLocal"
+            name="cloud-test-dev-1"
             )
         cls.service_offering = service_offering_only[0]
 
@@ -454,16 +454,17 @@ class TestVMLifeCycle(cloudstackTestCase):
             name="admin"
             )[0]
 
+
         cls.small_offering = ServiceOffering.create(
                                     cls.apiclient,
                                     cls.services["service_offerings"]["small"],
-                                    tags="cloudLocal"
+                                    tags="cloud-test-dev-1"
                                     )
 
         cls.medium_offering = ServiceOffering.create(
                                     cls.apiclient,
                                     cls.services["service_offerings"]["medium"],
-                                    tags="cloudLocal"
+                                    tags="cloud-test-dev-1"
                                     )
         #create small and large virtual machines
         cls.small_virtual_machine = VirtualMachine.create(

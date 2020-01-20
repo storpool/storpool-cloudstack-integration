@@ -67,7 +67,7 @@ class TestData():
     serviceOfferingOnly = "serviceOfferingOnly"
     scope = "scope"
     StorPool = "storpool"
-    storageTag = ["cloudstack-test", "cloudLocal", "shared-tags"]
+    storageTag = ["cloud-test-dev-2", "cloud-test-dev-1", "shared-tags"]
     tags = "tags"
     virtualMachine = "virtualmachine"
     virtualMachine2 = "virtualmachine2"
@@ -79,18 +79,18 @@ class TestData():
     def __init__(self):
         self.testdata = {
             TestData.primaryStorage: {
-                "name": "cloudstack-test",
+                "name": "cloud-test-dev-2",
                 TestData.scope: "ZONE",
-                "url": "cloudstack-test",
+                "url": "cloud-test-dev-2",
                 TestData.provider: "StorPool",
                 "path": "/dev/storpool",
                 TestData.capacityBytes: 2251799813685248,
                 TestData.hypervisor: "KVM"
             },
             TestData.primaryStorage2: {
-                "name": "cloudLocal",
+                "name": "cloud-test-dev-1",
                 TestData.scope: "ZONE",
-                "url": "cloudLocal",
+                "url": "cloud-test-dev-1",
                 TestData.provider: "StorPool",
                 "path": "/dev/storpool",
                 TestData.capacityBytes: 2251799813685248,
@@ -111,7 +111,7 @@ class TestData():
                 "protocol": "tcp"
             },
             TestData.serviceOffering:{
-                "name": "cloudstack-test",
+                "name": "cloud-test-dev-2",
                 "displaytext": "SP_CO_2 (Min IOPS = 10,000; Max IOPS = 15,000)",
                 "cpunumber": 1,
                 "cpuspeed": 500,
@@ -119,10 +119,10 @@ class TestData():
                 "storagetype": "shared",
                 "customizediops": False,
                 "hypervisorsnapshotreserve": 200,
-                "tags": "cloudstack-test"
+                "tags": "cloud-test-dev-2"
             },
             TestData.serviceOfferingOnly:{
-                "name": "cloudLocal",
+                "name": "cloud-test-dev-1",
                 "displaytext": "SP_CO_2 (Min IOPS = 10,000; Max IOPS = 15,000)",
                 "cpunumber": 1,
                 "cpuspeed": 500,
@@ -130,7 +130,7 @@ class TestData():
                 "storagetype": "shared",
                 "customizediops": False,
                 "hypervisorsnapshotreserve": 200,
-                "tags": "cloudLocal"
+                "tags": "cloud-test-dev-1"
             },
             TestData.diskOffering: {
                 "name": "SP_DO_1",
@@ -232,7 +232,7 @@ class TestVmSnapshot(cloudstackTestCase):
 
         service_offering_only = list_service_offering(
             cls.apiclient,
-            name="cloudstack-test"
+            name="cloud-test-dev-2"
             )
         if service_offering_only is not None:
             cls.service_offering_only = service_offering_only[0]
