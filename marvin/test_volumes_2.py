@@ -87,7 +87,7 @@ class TestData():
     serviceOffering = "serviceOffering"
     scope = "scope"
     StorPool = "storpool"
-    storageTag = ["cloudstack-test", "cloudLocal", "shared-tags"]
+    storageTag = ["cloud-test-dev-2", "cloud-test-dev-1", "shared-tags"]
     tags = "tags"
     templateName = "templatename"
     testAccount = "testaccount"
@@ -104,9 +104,9 @@ class TestData():
     def __init__(self):
         self.testdata = {
             TestData.primaryStorage: {
-                "name": "cloudstack-test",
+                "name": "cloud-test-dev-2",
                 TestData.scope: "ZONE",
-                "url": "cloudstack-test",
+                "url": "cloud-test-dev-2",
                 TestData.provider: "StorPool",
                 "path": "/dev/storpool",
                 #TestData.capacityIops: 4500000,
@@ -114,9 +114,9 @@ class TestData():
                 TestData.hypervisor: "KVM"
             },
             TestData.primaryStorage2: {
-                "name": "cloudLocal",
+                "name": "cloud-test-dev-1",
                 TestData.scope: "ZONE",
-                "url": "cloudLocal",
+                "url": "cloud-test-dev-1",
                 TestData.provider: "StorPool",
                 "path": "/dev/storpool",
                 #TestData.capacityIops: 4500000,
@@ -151,7 +151,7 @@ class TestData():
                 "tags": TestData.storageTag
             },
             TestData.serviceOffering:{
-                "name": "cloudLocal",
+                "name": "cloud-test-dev-1",
                 "displaytext": "SP_CO_2 (Min IOPS = 10,000; Max IOPS = 15,000)",
                 "cpunumber": 1,
                 "cpuspeed": 500,
@@ -159,10 +159,10 @@ class TestData():
                 "storagetype": "shared",
                 "customizediops": False,
                 "hypervisorsnapshotreserve": 200,
-                "tags": "cloudLocal"
+                "tags": "cloud-test-dev-1"
             },
             TestData.serviceOfferingOnly:{
-                "name": "cloudstack-test",
+                "name": "cloud-test-dev-2",
                 "displaytext": "SP_CO_2 (Min IOPS = 10,000; Max IOPS = 15,000)",
                 "cpunumber": 1,
                 "cpuspeed": 500,
@@ -170,7 +170,7 @@ class TestData():
                 "storagetype": "shared",
                 "customizediops": False,
                 "hypervisorsnapshotreserve": 200,
-                "tags": "cloudstack-test"
+                "tags": "cloud-test-dev-2"
             },
             TestData.nonManagedComputeOffering: {
                 "name": "SP_CO_2",
@@ -329,7 +329,7 @@ class TestVolumes(cloudstackTestCase):
 
         service_offering = list_service_offering(
             cls.apiClient,
-            name="cloudLocal"
+            name="cloud-test-dev-1"
             )
         if service_offering is not None:
             cls.service_offering = service_offering[0]
@@ -340,7 +340,7 @@ class TestVolumes(cloudstackTestCase):
 
         service_offering_only = list_service_offering(
             cls.apiClient,
-            name="cloudstack-test"
+            name="cloud-test-dev-2"
             )
         if service_offering_only is not None:
             cls.service_offering_only = service_offering_only[0]
@@ -501,10 +501,10 @@ class TestVolumes(cloudstackTestCase):
         volume = Volume.migrate(
             self.apiClient,
             volumeid = self.volume.id,
-            storageid = self.primary_storage2.id
+            storageid = self.primary_storage.id
             )
 
         self.assertIsNotNone(volume, "Volume is None")
 
-        self.assertEqual(volume.storageid, self.primary_storage2.id, "Storage is the same")
+        self.assertEqual(volume.storageid, self.primary_storage.id, "Storage is the same")
    

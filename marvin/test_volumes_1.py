@@ -21,6 +21,7 @@ from nose.plugins.attrib import attr
 from marvin.cloudstackTestCase import cloudstackTestCase
 from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_snapshot_on_nfs, isAlmostEqual
 from marvin.lib.base import (Account,
+                             Configurations,
                              ServiceOffering,
                              Snapshot,
                              StoragePool,
@@ -34,6 +35,7 @@ from marvin.lib.common import (get_zone,
                                list_disk_offering,
                                list_snapshots,
                                list_storage_pools,
+                               list_volumes,
                                list_virtual_machines,
                                list_configurations, list_service_offering)
 from marvin.cloudstackAPI import (listOsTypes,
@@ -63,19 +65,19 @@ class TestStoragePool(cloudstackTestCase):
         cls.zone = get_zone(cls.apiclient, testClient.getZoneForTests())
 
         storpool_primary_storage = {
-            "name" : "cloudstack-test",
+            "name" : "cloud-test-dev-1",
             "zoneid": cls.zone.id,
-            "url": "cloudLocal",
+            "url": "cloud-test-dev-1",
             "scope": "zone",
             "capacitybytes": 4500000,
             "capacityiops": 155466464221111121,
             "hypervisor": "kvm",
             "provider": "StorPool",
-            "tags": "cloudstack-test"
+            "tags": "cloud-test-dev-1"
             }
 
         storpool_service_offerings = {
-            "name": "cloudstack-test'",
+            "name": "cloud-test-dev-1",
                 "displaytext": "SP_CO_2 (Min IOPS = 10,000; Max IOPS = 15,000)",
                 "cpunumber": 1,
                 "cpuspeed": 500,
@@ -83,19 +85,17 @@ class TestStoragePool(cloudstackTestCase):
                 "storagetype": "shared",
                 "customizediops": False,
                 "hypervisorsnapshotreserve": 200,
-                "tags": "cloudstack-test"
+                "tags": "cloud-test-dev-1"
             }
-
-
 
         storage_pool = list_storage_pools(
             cls.apiclient,
-            name='cloudstack-test'
+            name='cloud-test-dev-1'
             )
 
         service_offerings = list_service_offering(
             cls.apiclient,
-            name='cloudstack-test'
+            name='cloud-test-dev-1'
             )
 
         disk_offerings = list_disk_offering(
@@ -460,6 +460,49 @@ class TestStoragePool(cloudstackTestCase):
             )
         
 
+        self.assertIsNotNone(template, "Template is None")
+        self.assertIsInstance(template, Template, "Template is instance of template")
+        self._cleanup.append(snapshot)
+        self._cleanup.append(template)
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_07_snapshot_to_template_bypass_secondary(self):
+        ''' Create template from snapshot bypassing secondary storage
+        '''
+        ##cls.virtual_machine
+        volume = list_volumes(
+                        self.apiclient,
+                        virtualmachineid = self.virtual_machine.id
+                        )
+        snapshot = Snapshot.create(
+           self.apiclient,
+            volume_id = volume[0].id
+            )
+
+        backup_config = list_configurations(
+            self.apiclient, 
+            name = "sp.bypass.secondary.storage" )
+        if (backup_config[0].value == "false"):
+            backup_config = Configurations.update(self.apiclient,
+            name = "sp.bypass.secondary.storage", 
+            value = "true")
+        self.assertIsNotNone(snapshot, "Could not create snapshot")
+        self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
+        
+        template = self.create_template_from_snapshot(
+            self.apiclient,
+            self.services,
+            snapshotid = snapshot.id
+            )
+        virtual_machine = VirtualMachine.create(self.apiclient,
+            {"name":"StorPool-%d" % random.randint(0, 100)},
+            zoneid=self.zone.id,
+            templateid=template.id,
+            serviceofferingid=self.service_offering.id,
+            hypervisor=self.hypervisor,
+            rootdisksize=10
+            )
+        ssh_client = virtual_machine.get_ssh_client()
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
         self._cleanup.append(snapshot)
