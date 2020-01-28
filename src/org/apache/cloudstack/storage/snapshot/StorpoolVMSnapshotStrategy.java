@@ -154,7 +154,7 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                     vmSnapshotVO.setParent(current.getId());
                }
 
-               SpApiResponse resp = StorpoolUtil.volumesGroupSnapshot(volumeTOs, userVm.getId(), vmSnapshotVO.getUuid(), conn);
+               SpApiResponse resp = StorpoolUtil.volumesGroupSnapshot(volumeTOs, userVm.getUuid(), vmSnapshotVO.getUuid(), conn);
                StorpoolCreateVMSnapshotCommand cmd = new StorpoolCreateVMSnapshotCommand(vmSnapshot.getUuid(),
                          vmSnapshotVO.getUuid(), userVm.getId(), target, volumeTOs, null);
 
@@ -330,7 +330,7 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                     log.error("Delete volume Could not complete revert task" + err);
                 }
 
-                resp = StorpoolUtil.volumeCreateWithTags(volumeName, snapshotName, size, userVm.getId(), conn);
+                resp = StorpoolUtil.volumeCreateWithTags(volumeName, snapshotName, size, userVm.getUuid(), conn);
                 if (resp.getError() != null) {
                     err = String.format("Could not complete task error=%s", resp.getError());
                     log.error("Create Could not complete revert task" + err);

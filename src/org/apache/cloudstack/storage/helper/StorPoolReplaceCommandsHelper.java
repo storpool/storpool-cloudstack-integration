@@ -48,8 +48,10 @@ import com.cloud.utils.DateUtil;
 import com.cloud.utils.component.ComponentContext;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.UserVmVO;
+import com.cloud.vm.VMInstanceVO;
 import com.cloud.vm.VirtualMachine;
 import com.cloud.vm.dao.UserVmDao;
+import com.cloud.vm.dao.VMInstanceDao;
 import com.cloud.vm.snapshot.VMSnapshot;
 import com.cloud.vm.snapshot.VMSnapshotManager;
 import com.cloud.vm.snapshot.VMSnapshotManagerImpl;
@@ -132,6 +134,8 @@ public class StorPoolReplaceCommandsHelper{
         private HypervisorCapabilitiesDao _hypervisorCapabilitiesDao;
         @Inject
         private PrimaryDataStoreDao storagePool;
+        @Inject
+        private VMInstanceDao _vmInstanceDao;
 
         private int _vmSnapshotMax = VMSnapshotManager.VMSNAPSHOTMAX;
 
@@ -170,7 +174,8 @@ public class StorPoolReplaceCommandsHelper{
             SpConnectionDesc conn = new SpConnectionDesc(volumeObjectTO.getDataStore().getUuid());
             String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volume.getPath());
             if (name != null) {
-                StorpoolUtil.volumeUpadateTags(name, vmId, conn);
+                VMInstanceVO vm = _vmInstanceDao.findById(vmId);
+                StorpoolUtil.volumeUpadateTags(name, vm != null ? vm.getUuid() : null, conn);
             }
         }
 
