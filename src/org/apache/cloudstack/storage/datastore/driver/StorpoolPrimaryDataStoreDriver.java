@@ -76,7 +76,9 @@ import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.VMTemplatePoolDao;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.utils.NumbersUtil;
+import com.cloud.vm.VMInstanceVO;
 import com.cloud.vm.VirtualMachineManager;
+import com.cloud.vm.dao.VMInstanceDao;
 
 
 public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
@@ -88,6 +90,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     @Inject EndPointSelector selector;
     @Inject ConfigurationDao configDao;
     @Inject VMTemplatePoolDao vmTemplatePoolDao;
+    @Inject VMInstanceDao vmInstanceDao;
 
     @Override
     public Map<String, String> getCapabilities() {
@@ -134,9 +137,9 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         primaryStoreDao.update(poolId, storagePool);
     }
 
-    private Long getVMInstance(long id) {
-         VolumeVO volume = volumeDao.findById(id);
-         return volume.getInstanceId();
+    private String getVMInstanceUUID(long id) {
+        VMInstanceVO vm = vmInstanceDao.findById(id);
+         return vm.getUuid();
     }
 
     protected void _completeResponse(final CreateObjectAnswer answer, final String err, final AsyncCompletionCallback<CommandResult> callback)
@@ -498,7 +501,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         size = snapshotSize;
                     }
                     StorpoolUtil.spLog(String.format("volume size is: %d", size));
-                    SpApiResponse resp = StorpoolUtil.volumeCreate(name, parentName, size, conn);
+                    SpApiResponse resp = StorpoolUtil.volumeCreateWithTags(name, parentName, size, vinfo.getInstanceId() != null ? getVMInstanceUUID(vinfo.getInstanceId()) : null, conn);
                     if (resp.getError() == null) {
                         updateStoragePool(dstData.getDataStore().getId(), vinfo.getSize());
 
@@ -524,7 +527,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     VolumeInfo srcInfo = (VolumeInfo) srcData;
                     Long vmId = srcInfo.getInstanceId();
 
-                    SpApiResponse resp = StorpoolUtil.volumeCreateWithTags(name, null, size, vmId, conn);
+                    SpApiResponse resp = StorpoolUtil.volumeCreateWithTags(name, null, size, vmId != null ? getVMInstanceUUID(vmId) : null, conn);
                     if (resp.getError() != null) {
                         err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
                     } else {
@@ -667,7 +670,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             SnapshotObjectTO snapTo = (SnapshotObjectTO)snapshot.getTO();
             snapTo.setPath(StorpoolUtil.devPath(snapshotName));
             answer = new CreateObjectAnswer(snapTo);
-            StorpoolUtil.snapshotUpadateTags(snapshotName, vmId, conn);
+            StorpoolUtil.snapshotUpadateTags(snapshotName, vmId != null ? getVMInstanceUUID(vmId) : null, conn);
         }
 
         CreateCmdResult res = new CreateCmdResult(null, answer);
@@ -702,11 +705,11 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             return;
         }
 
-        resp = StorpoolUtil.volumeCreateWithTags(volumeName, snapshotName, size, vinfo.getInstanceId(), conn);
+        resp = StorpoolUtil.volumeCreateWithTags(volumeName, snapshotName, size, vinfo.getInstanceId() != null ? getVMInstanceUUID(vinfo.getInstanceId()) : null, conn);
         if (resp.getError() != null) {
             // Mmm, try to restore it first...
             String err = String.format("Could not revert StorPool volume %s to the %s snapshot: could not create the new volume: error %s", vinfo.getName(), snapshot.getName(), resp.getError());
-            resp = StorpoolUtil.volumeCreateWithTags(volumeName, backupSnapshotName, size, vinfo.getInstanceId(), conn);
+            resp = StorpoolUtil.volumeCreateWithTags(volumeName, backupSnapshotName, size, vinfo.getInstanceId() != null ? getVMInstanceUUID(vinfo.getInstanceId()) : null, conn);
             if (resp.getError() != null)
                 err = String.format("%s.  Also, could not even restore the old volume: %s", err, resp.getError());
             else
