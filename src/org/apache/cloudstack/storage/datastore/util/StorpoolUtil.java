@@ -190,7 +190,6 @@ public class StorpoolUtil {
                 for (String line: parser.getLines().split("\n")) {
                     String[] toks = line.split("=");
                     if( toks.length != 2 ) {
-                        log.debug("unexpected line in storpool_confget output: " + line);
                         continue;
                     }
 
