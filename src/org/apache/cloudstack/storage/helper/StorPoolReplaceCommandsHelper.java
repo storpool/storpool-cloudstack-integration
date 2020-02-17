@@ -95,7 +95,9 @@ public class StorPoolReplaceCommandsHelper{
                             StorPoolAttachVolumeCmd.class,
                             StorPoolDetachVolumeCmd.class,
                             StorPoolDetachVolumeCmdByAdmin.class,
-                            StorPoolCreateVMSnapshotCmd.class));
+                            StorPoolCreateVMSnapshotCmd.class,
+                            StorPoolCreateTagsCmd.class,
+                            StorPoolDeleteTagsCmd.class));
             for (Class<?> clazz : set) {
                 final APICommand at = clazz.getAnnotation(APICommand.class);
                 String name = at.name();
@@ -166,7 +168,7 @@ public class StorPoolReplaceCommandsHelper{
             }
         }
 
-        void updateVolumeTags(Long volumeID, Long vmId) {
+        void updateVolumeTags(Long volumeID, Long vmId, String ... value) {
             VolumeVO volume = volumeDao.findById(volumeID);
             VolumeInfo volumeObjectTO = volumeDataFactory.getVolume(volumeID);
             log.info(String.format("Volume id=%s, name=%s, instanceId=%s, path=%s", volume.getId(), volume.getName(),
@@ -174,8 +176,12 @@ public class StorPoolReplaceCommandsHelper{
             SpConnectionDesc conn = new SpConnectionDesc(volumeObjectTO.getDataStore().getUuid());
             String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volume.getPath());
             if (name != null) {
-                VMInstanceVO vm = _vmInstanceDao.findById(vmId);
-                StorpoolUtil.volumeUpadateTags(name, vm != null ? vm.getUuid() : null, conn);
+                boolean isStorPoolVolume = StorpoolUtil.volumeExists(name, conn);
+                if (isStorPoolVolume) {
+                    log.debug(String.format("Updating StorPool's volume=%s tags", name));
+                    VMInstanceVO vm = _vmInstanceDao.findById(vmId);
+                    StorpoolUtil.volumeUpadateTags(name, vm != null ? vm.getUuid() : null, conn, value.length > 0 ? value[0] : "");
+                }
             }
         }
 

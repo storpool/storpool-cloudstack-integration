@@ -1,12 +1,18 @@
 package org.apache.cloudstack.storage.helper;
 
+import javax.inject.Inject;
+
 import org.apache.cloudstack.api.APICommand;
 import org.apache.cloudstack.api.BaseAsyncCmd;
 import org.apache.cloudstack.api.ResponseObject.ResponseView;
 import org.apache.cloudstack.api.command.user.volume.AttachVolumeCmd;
 import org.apache.cloudstack.api.response.VolumeResponse;
+import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.log4j.Logger;
 
+import com.cloud.server.ResourceTag;
+import com.cloud.server.ResourceTag.ResourceObjectType;
+import com.cloud.tags.dao.ResourceTagDao;
 import com.cloud.utils.component.ComponentContext;
 import com.cloud.vm.VirtualMachine;
 
@@ -16,6 +22,8 @@ public class StorPoolAttachVolumeCmd extends BaseAsyncCmd {
     private static final Logger log = Logger.getLogger(StorPoolAttachVolumeCmd.class);
     private AttachVolumeCmd attachVolumeCmd;
     private StorPoolReplaceCommandsHelper.StorPoolReplaceCommandsUtil replaceCommands = StorPoolReplaceCommandsHelper.getStorPoolReplaceCommandsUtil();
+    @Inject
+    private ResourceTagDao _resourceTagDao;
 
     public StorPoolAttachVolumeCmd() {
         super();
@@ -43,7 +51,8 @@ public class StorPoolAttachVolumeCmd extends BaseAsyncCmd {
         replaceCommands.ensureCmdHasRequiredValues(this.attachVolumeCmd, this);
         this.attachVolumeCmd.execute();
         log.info("AttachVolumeCmd.execute was successfuly executed");
-        replaceCommands.updateVolumeTags(this.attachVolumeCmd.getId(), this.attachVolumeCmd.getVirtualMachineId());
+        ResourceTag resourceTag = _resourceTagDao.findByKey(this.attachVolumeCmd.getVirtualMachineId(), ResourceObjectType.UserVm, StorpoolUtil.SP_VC_POLICY);
+        replaceCommands.updateVolumeTags(this.attachVolumeCmd.getId(), this.attachVolumeCmd.getVirtualMachineId(), resourceTag !=null ? resourceTag.getValue() : "");
         // set Response object, because asyncjob is never finished and we did not
         // receive message in the UIthat the volumes is attached
         this.setResponseObject(attachVolumeCmd.getResponseObject());
