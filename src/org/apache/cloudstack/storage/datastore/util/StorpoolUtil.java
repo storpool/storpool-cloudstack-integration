@@ -119,6 +119,7 @@ public class StorpoolUtil {
 
     public static final String SP_PROVIDER_NAME = "StorPool";
     public static final String SP_DEV_PATH = "/dev/storpool/";
+    public static final String SP_VC_POLICY = "vc_policy";
 
     public static enum StorpoolRights {
         RO("ro"),
@@ -431,10 +432,11 @@ public class StorpoolUtil {
         return POST("MultiCluster/VolumeUpdate/" + name, json, conn);
     }
 
-    public static SpApiResponse volumeUpadateTags(final String name, final String uuid, SpConnectionDesc conn) {
+    public static SpApiResponse volumeUpadateTags(final String name, final String uuid, SpConnectionDesc conn, String vcPolicy) {
          Map<String, Object> json = new HashMap<>();
          Map<String, String> tags = new HashMap<>();
          tags.put("cvm", uuid != null ? uuid : "");
+         tags.put(SP_VC_POLICY, vcPolicy != null ? vcPolicy : "");
          json.put("tags", tags);
          return POST("MultiCluster/VolumeUpdate/" + name, json, conn);
     }
