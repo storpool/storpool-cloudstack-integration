@@ -67,20 +67,19 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
 
         final SnapshotVO snapshotVO = _snapshotDao.findById(snapshotId);
         final String name = snapshotVO.getUuid();
-
-        final boolean res = super.deleteSnapshot(snapshotId);
-        if (res) {
-            // clean-up snapshot from Storpool storage pools
-            VolumeVO volume = _volumeDao.findByIdIncludingRemoved(snapshotVO.getVolumeId());
-            StoragePoolVO storage = _primaryDataStoreDao.findById(volume.getPoolId());
-            if (storage.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
-                SpConnectionDesc conn = new SpConnectionDesc(storage.getUuid());
-                SpApiResponse resp = StorpoolUtil.snapshotDelete(name, conn);
-                if (resp.getError() != null) {
-                    final String err = String.format("Failed to clean-up Storpool snapshot %s. Error: %s", name, resp.getError());
-                    log.error(err);
-                    StorpoolUtil.spLog(err);
-                }
+        boolean res = false;
+        // clean-up snapshot from Storpool storage pools
+        VolumeVO volume = _volumeDao.findByIdIncludingRemoved(snapshotVO.getVolumeId());
+        StoragePoolVO storage = _primaryDataStoreDao.findById(volume.getPoolId());
+        if (storage.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
+            SpConnectionDesc conn = new SpConnectionDesc(storage.getUuid());
+            SpApiResponse resp = StorpoolUtil.snapshotDelete(name, conn);
+            if (resp.getError() != null) {
+                 final String err = String.format("Failed to clean-up Storpool snapshot %s. Error: %s", name, resp.getError());
+                 log.error(err);
+                 StorpoolUtil.spLog(err);
+            }else {
+                 res = super.deleteSnapshot(snapshotId);
             }
         }
 
