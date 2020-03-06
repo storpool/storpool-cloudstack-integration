@@ -576,14 +576,14 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     VolumeObjectTO srcTO = (VolumeObjectTO)srcData.getTO();
                     StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc SRC path=%s ", srcTO.getPath());
                     StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc DST canonicalName=%s ", dstData.getDataStore().getClass().getCanonicalName());
-                    PrimaryDataStoreTO checkStoragePool = (PrimaryDataStoreTO)dstData.getTO().getDataStore();
+                    PrimaryDataStoreTO checkStoragePool = dstData.getTO().getDataStore() instanceof PrimaryDataStoreTO ? (PrimaryDataStoreTO)dstData.getTO().getDataStore() : null;
                     SpConnectionDesc conn = new SpConnectionDesc(srcData.getDataStore().getUuid());
                     final String name = StorpoolStorageAdaptor.getVolumeNameFromPath(srcTO.getPath());
                     final String tmpSnapName = String.format("tmp-for-download-%s", name);
                     StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc DST tmpSnapName=%s ,srcUUID=%s", tmpSnapName, srcTO.getUuid());
                     final SpApiResponse resp = StorpoolUtil.volumeSnapshot(name, tmpSnapName, conn);
                     if (resp.getError() == null) {
-                        if (checkStoragePool.getPoolType().equals(StoragePoolType.SharedMountPoint)) {
+                        if (checkStoragePool != null && checkStoragePool.getPoolType().equals(StoragePoolType.SharedMountPoint)) {
                             String baseOn = StorpoolStorageAdaptor.getVolumeNameFromPath(srcTO.getPath());
                             String volumeName = dstData.getUuid();
                             StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc volumeName=%s, baseOn=%s", volumeName,baseOn );
@@ -601,7 +601,8 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
                             StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc command=%s ", cmd);
 
-                            EndPoint ep = selector.select(srcData, dstData);
+                            Long clusterId = findClusterId(StorpoolUtil.getSnapshotClusterID(tmpSnapName, conn), srcData.getDataStore().getScope().getScopeId());
+                            EndPoint ep = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, dstData);
                             StorpoolUtil.spLog("selector.select(srcData, dstData) ", ep);
                             if( ep == null ) {
                                 ep = selector.select(dstData);
