@@ -85,6 +85,7 @@ import com.cloud.utils.NumbersUtil;
 import com.cloud.vm.VMInstanceVO;
 import com.cloud.vm.VirtualMachineManager;
 import com.cloud.vm.dao.VMInstanceDao;
+import com.google.gson.JsonObject;
 
 
 public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
@@ -291,7 +292,12 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             if (resp.getError() == null) {
                 updateStoragePool(dataStore.getId(), - vinfo.getSize());
             } else {
-                err = String.format("Could not delete StorPool volume %s. Error: %s", name, resp.getError());
+                JsonObject obj = resp.fullJson.getAsJsonObject();
+                JsonObject error = obj.getAsJsonObject("error");
+                String objectDoesNotExist = error.getAsJsonPrimitive("name").getAsString();
+                if (objectDoesNotExist != null && !objectDoesNotExist.equalsIgnoreCase("objectDoesNotExist")) {
+                    err = String.format("Could not delete StorPool volume %s. Error: %s", name, resp.getError());
+                }
             }
         } else {
             err = String.format("Invalid DataObjectType \"%s\" passed to deleteAsync", data.getType());
