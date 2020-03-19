@@ -404,7 +404,7 @@ public class StorpoolUtil {
         return POST("MultiCluster/VolumeCreate", json, conn);
     }
 
-    public static SpApiResponse volumeCreateWithTags(final String name, final String parentName, final Long size, String uuid, SpConnectionDesc conn) {
+    public static SpApiResponse volumeCreateWithTags(final String name, final String parentName, final Long size, String uuid, String vcPolicy, SpConnectionDesc conn) {
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("name", name);
         json.put("parent", parentName);
@@ -412,6 +412,7 @@ public class StorpoolUtil {
         json.put("template", conn.getTemplateName());
         Map<String, String> tags = new HashMap<>();
         tags.put("cvm", uuid != null ? uuid : "");
+        tags.put(SP_VC_POLICY, vcPolicy != null ? vcPolicy : "");
         json.put("tags", tags);
         return POST("MultiCluster/VolumeCreate", json, conn);
     }

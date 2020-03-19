@@ -51,6 +51,8 @@ import com.cloud.event.UsageEventUtils;
 import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
+import com.cloud.server.ResourceTag;
+import com.cloud.server.ResourceTag.ResourceObjectType;
 import com.cloud.storage.DiskOfferingVO;
 import com.cloud.storage.GuestOSHypervisorVO;
 import com.cloud.storage.GuestOSVO;
@@ -59,6 +61,7 @@ import com.cloud.storage.dao.DiskOfferingDao;
 import com.cloud.storage.dao.GuestOSDao;
 import com.cloud.storage.dao.GuestOSHypervisorDao;
 import com.cloud.storage.dao.VolumeDao;
+import com.cloud.tags.dao.ResourceTagDao;
 import com.cloud.uservm.UserVm;
 import com.cloud.utils.db.Transaction;
 import com.cloud.utils.db.TransactionCallbackWithExceptionNoReturn;
@@ -106,6 +109,8 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
      PrimaryDataStoreDao storagePool;
      @Inject
      VirtualMachineManager virtManager;
+     @Inject
+     private ResourceTagDao _resourceTagDao;
 
      @Override
      public VMSnapshot takeVMSnapshot(VMSnapshot vmSnapshot) {
@@ -329,12 +334,12 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                     err = String.format("Could not complete task error=%s", resp.getError());
                     log.error("Delete volume Could not complete revert task" + err);
                 }
-
-                resp = StorpoolUtil.volumeCreateWithTags(volumeName, snapshotName, size, userVm.getUuid(), conn);
+                ResourceTag resourceTag =  _resourceTagDao.findByKey(userVm.getId(), ResourceObjectType.UserVm, StorpoolUtil.SP_VC_POLICY);
+                resp = StorpoolUtil.volumeCreateWithTags(volumeName, snapshotName, size, userVm.getUuid(), resourceTag != null ? resourceTag.getValue() : null, conn);
                 if (resp.getError() != null) {
                     err = String.format("Could not complete task error=%s", resp.getError());
                     log.error("Create Could not complete revert task" + err);
-                    resp = StorpoolUtil.volumeCreate(volumeName, backupSnapshot, size, conn);
+                    resp = StorpoolUtil.volumeCreateWithTags(volumeName, backupSnapshot, size, userVm.getUuid(), resourceTag != null ? resourceTag.getValue() : null, conn);
                     if (resp.getError() != null) {
                         err = String.format("Could not complete task error=%s", resp.getError());
                     } else {
