@@ -73,6 +73,8 @@ import com.cloud.host.Host;
 import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
+import com.cloud.server.ResourceTag;
+import com.cloud.server.ResourceTag.ResourceObjectType;
 import com.cloud.storage.ResizeVolumePayload;
 import com.cloud.storage.Storage.StoragePoolType;
 import com.cloud.storage.StorageManager;
@@ -81,6 +83,7 @@ import com.cloud.storage.VMTemplateStoragePoolVO;
 import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.VMTemplatePoolDao;
 import com.cloud.storage.dao.VolumeDao;
+import com.cloud.tags.dao.ResourceTagDao;
 import com.cloud.utils.NumbersUtil;
 import com.cloud.vm.VMInstanceVO;
 import com.cloud.vm.VirtualMachineManager;
@@ -100,6 +103,10 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     @Inject VMInstanceDao vmInstanceDao;
     @Inject ClusterDao clusterDao;
     @Inject HostDao hostDao;
+    @Inject
+    private ResourceTagDao _resourceTagDao;
+    @Inject
+    VMInstanceDao vmDao;
 
     @Override
     public Map<String, String> getCapabilities() {
@@ -514,7 +521,8 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         size = snapshotSize;
                     }
                     StorpoolUtil.spLog(String.format("volume size is: %d", size));
-                    SpApiResponse resp = StorpoolUtil.volumeCreateWithTags(name, parentName, size, vinfo.getInstanceId() != null ? getVMInstanceUUID(vinfo.getInstanceId()) : null, conn);
+                    Long vmId = vinfo.getInstanceId();
+                    SpApiResponse resp = StorpoolUtil.volumeCreateWithTags(name, parentName, size, vmId != null ? getVMInstanceUUID(vmId) : null, getVcPolicyTag(vmId), conn);
                     if (resp.getError() == null) {
                         updateStoragePool(dstData.getDataStore().getId(), vinfo.getSize());
 
@@ -540,7 +548,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     VolumeInfo srcInfo = (VolumeInfo) srcData;
                     Long vmId = srcInfo.getInstanceId();
 
-                    SpApiResponse resp = StorpoolUtil.volumeCreateWithTags(name, null, size, vmId != null ? getVMInstanceUUID(vmId) : null, conn);
+                    SpApiResponse resp = StorpoolUtil.volumeCreateWithTags(name, null, size, vmId != null ? getVMInstanceUUID(vmId) : null, getVcPolicyTag(vmId), conn);
                     if (resp.getError() != null) {
                         err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
                     } else {
@@ -718,12 +726,13 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             completeResponse(err, callback);
             return;
         }
+        Long vmId = vinfo.getInstanceId();
 
-        resp = StorpoolUtil.volumeCreateWithTags(volumeName, snapshotName, size, vinfo.getInstanceId() != null ? getVMInstanceUUID(vinfo.getInstanceId()) : null, conn);
+        resp = StorpoolUtil.volumeCreateWithTags(volumeName, snapshotName, size, vmId != null ? getVMInstanceUUID(vmId) : null, getVcPolicyTag(vmId), conn);
         if (resp.getError() != null) {
             // Mmm, try to restore it first...
             String err = String.format("Could not revert StorPool volume %s to the %s snapshot: could not create the new volume: error %s", vinfo.getName(), snapshot.getName(), resp.getError());
-            resp = StorpoolUtil.volumeCreateWithTags(volumeName, backupSnapshotName, size, vinfo.getInstanceId() != null ? getVMInstanceUUID(vinfo.getInstanceId()) : null, conn);
+            resp = StorpoolUtil.volumeCreateWithTags(volumeName, backupSnapshotName, size, vmId != null ? getVMInstanceUUID(vmId) : null, getVcPolicyTag(vmId), conn);
             if (resp.getError() != null)
                 err = String.format("%s.  Also, could not even restore the old volume: %s", err, resp.getError());
             else
@@ -754,5 +763,10 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     private HostVO findHostByCluster(Long clusterId) {
         List<HostVO> host = hostDao.findByClusterId(clusterId);
         return host != null ? host.get(0) : null;
+    }
+
+    private String getVcPolicyTag(Long vmId) {
+        ResourceTag resourceTag = vmId != null ? _resourceTagDao.findByKey(vmId, ResourceObjectType.UserVm, StorpoolUtil.SP_VC_POLICY) : null;
+        return resourceTag != null ? resourceTag.getValue() : null;
     }
 }

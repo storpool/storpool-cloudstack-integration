@@ -20,6 +20,7 @@ import pprint
 import random
 import subprocess
 import time
+import json
 
 from marvin.cloudstackAPI import (listOsTypes,
                                   listTemplates,
@@ -27,6 +28,7 @@ from marvin.cloudstackAPI import (listOsTypes,
                                   createTemplate,
                                   createVolume,
                                   resizeVolume,
+                                  revertSnapshot,
                                   startVirtualMachine)
 from marvin.cloudstackTestCase import cloudstackTestCase
 from marvin.codes import FAILED, KVM, PASS, XEN_SERVER, RUNNING
@@ -56,6 +58,7 @@ from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_sna
 from nose.plugins.attrib import attr
 
 from storpool import spapi
+from _ast import If
 
 
 class TestStoragePool(cloudstackTestCase):
@@ -157,7 +160,13 @@ class TestStoragePool(cloudstackTestCase):
         )
         cls.volume_2 = Volume.create(
             cls.apiclient,
-            {"diskname":"StorPoolDisk-1" },
+            {"diskname":"StorPoolDisk-2" },
+            zoneid=cls.zone.id,
+            diskofferingid=cls.disk_offerings.id,
+        )
+        cls.volume = Volume.create(
+            cls.apiclient,
+            {"diskname":"StorPoolDisk-3" },
             zoneid=cls.zone.id,
             diskofferingid=cls.disk_offerings.id,
         )
@@ -170,16 +179,25 @@ class TestStoragePool(cloudstackTestCase):
             hypervisor=cls.hypervisor,
             rootdisksize=10
         )
-
+        cls.virtual_machine2= VirtualMachine.create(
+            cls.apiclient,
+            {"name":"StorPool-%d" % random.randint(0, 100)},
+            zoneid=cls.zone.id,
+            templateid=template.id,
+            serviceofferingid=cls.service_offering.id,
+            hypervisor=cls.hypervisor,
+            rootdisksize=10
+        )
         cls.template = template
         cls.random_data_0 = random_gen(size=100)
         cls.test_dir = "/tmp"
         cls.random_data = "random.data"
         cls._cleanup = []
         cls._cleanup.append(cls.virtual_machine)
+        cls._cleanup.append(cls.virtual_machine2)
         cls._cleanup.append(cls.volume_1)
         cls._cleanup.append(cls.volume_2)
-
+        cls._cleanup.append(cls.volume)
         return
 
     @classmethod
@@ -223,6 +241,306 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
             )
+        self.debug('######################### test_01_set_vcpolicy_tag_to_vm_with_attached_disks tags ######################### ')
+
+        self.vc_policy_tags(volumes, vm_tags, vm)
+
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_02_set_vcpolicy_tag_to_attached_disk(self):
+        """ Test set vc_policy tag to new disk attached to VM"""
+        volume_attached = self.virtual_machine.attach_volume(
+                self.apiclient,
+                self.volume_2
+                )
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
+        vm_tags = vm[0].tags
+        self.debug('######################### test_02_set_vcpolicy_tag_to_attached_disk tags ######################### ')
+        for vm_tag in vm_tags:
+            sp_volume = self.spapi.volumeList(volumeName=volume_attached.id)
+            for sp_tag in sp_volume[0].tags:
+                if sp_tag == vm_tag.key:
+                    self.debug("######################### StorPool tag %s , VM tag %s ######################### " % (sp_tag, vm_tag.key))
+                    self.assertEqual(sp_tag, vm_tag.key, "StorPool tag is not the same as the Virtual Machine tag")
+                    self.assertEqual(sp_volume[0].tags[sp_tag], vm_tag.value, "StorPool tag value is not the same as the Virtual Machine tag value")
+                if sp_tag == 'cvm':
+                    self.debug("#########################  StorPool tag value %s , VM uuid %s ######################### " % (sp_volume[0].tags[sp_tag], vm[0].id))
+                    self.assertEqual(sp_volume[0].tags[sp_tag], vm[0].id, "cvm tag is not the expected value")
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_03_create_vm_snapshot_vc_policy_tag(self):
+        """Test to create VM snapshots
+        """
+        volume_attached = self.virtual_machine.attach_volume(
+            self.apiclient,
+            self.volume
+            )
+
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.virtual_machine.id,
+            )
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
+        vm_tags =  vm[0].tags
+        self.debug('######################### test_03_create_vm_snapshot_vc_policy_tag tags ######################### ')
+
+        self.vc_policy_tags(volumes, vm_tags, vm)
+
+
+        self.assertEqual(volume_attached.id, self.volume.id, "Is not the same volume ")
+        try:
+            # Login to VM and write data to file system
+            ssh_client = self.virtual_machine.get_ssh_client()
+
+            cmds = [
+                "echo %s > %s/%s" %
+                (self.random_data_0, self.test_dir, self.random_data),
+                "sync",
+                "sleep 1",
+                "sync",
+                "sleep 1",
+                "cat %s/%s" %
+                (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      self.virtual_machine.ipaddress)
+        self.assertEqual(
+            self.random_data_0,
+            result[0],
+            "Check the random data has be write into temp file!"
+        )
+
+        time.sleep(30)
+        MemorySnapshot = False
+        vm_snapshot = VmSnapshot.create(
+            self.apiclient,
+            self.virtual_machine.id,
+            MemorySnapshot,
+            "TestSnapshot",
+            "Display Text"
+        )
+        self.assertEqual(
+            vm_snapshot.state,
+            "Ready",
+            "Check the snapshot of vm is ready!"
+        )
+
+        return
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_04_revert_vm_snapshots_vc_policy_tag(self):
+        """Test to revert VM snapshots
+        """
+
+        try:
+            ssh_client = self.virtual_machine.get_ssh_client()
+
+            cmds = [
+                "rm -rf %s/%s" % (self.test_dir, self.random_data),
+                "ls %s/%s" % (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      self.virtual_machine.ipaddress)
+
+        if str(result[0]).index("No such file or directory") == -1:
+            self.fail("Check the random data has be delete from temp file!")
+
+        time.sleep(30)
+
+        list_snapshot_response = VmSnapshot.list(
+            self.apiclient,
+            virtualmachineid=self.virtual_machine.id,
+            listall=True)
+
+        self.assertEqual(
+            isinstance(list_snapshot_response, list),
+            True,
+            "Check list response returns a valid list"
+        )
+        self.assertNotEqual(
+            list_snapshot_response,
+            None,
+            "Check if snapshot exists in ListSnapshot"
+        )
+
+        self.assertEqual(
+            list_snapshot_response[0].state,
+            "Ready",
+            "Check the snapshot of vm is ready!"
+        )
+
+        self.virtual_machine.stop(self.apiclient, forced=True)
+
+        VmSnapshot.revertToSnapshot(
+            self.apiclient,
+            list_snapshot_response[0].id
+            )
+
+        self.virtual_machine.start(self.apiclient)
+
+        try:
+            ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
+
+            cmds = [
+                "cat %s/%s" % (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      self.virtual_machine.ipaddress)
+
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.virtual_machine.id,
+            )
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
+        vm_tags =  vm[0].tags
+        self.debug('######################### test_04_revert_vm_snapshots_vc_policy_tag tags #########################')
+
+        self.vc_policy_tags(volumes, vm_tags, vm)
+
+        self.assertEqual(
+            self.random_data_0,
+            result[0],
+            "Check the random data is equal with the ramdom file!"
+        )
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_05_delete_vm_snapshots(self):
+        """Test to delete vm snapshots
+        """
+
+        list_snapshot_response = VmSnapshot.list(
+            self.apiclient,
+            virtualmachineid=self.virtual_machine.id,
+            listall=True)
+
+        self.assertEqual(
+            isinstance(list_snapshot_response, list),
+            True,
+            "Check list response returns a valid list"
+        )
+        self.assertNotEqual(
+            list_snapshot_response,
+            None,
+            "Check if snapshot exists in ListSnapshot"
+        )
+        VmSnapshot.deleteVMSnapshot(
+            self.apiclient,
+            list_snapshot_response[0].id)
+
+        time.sleep(30)
+
+        list_snapshot_response = VmSnapshot.list(
+            self.apiclient,
+            #vmid=self.virtual_machine.id,
+            virtualmachineid=self.virtual_machine.id,
+            listall=False)
+        self.debug('list_snapshot_response -------------------- %s' % list_snapshot_response)
+
+        self.assertIsNone(list_snapshot_response, "snapshot is already deleted")
+      
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_06_remove_vcpolicy_tag_when_disk_detached(self):
+        """ Test remove vc_policy tag to disk detached from VM"""
+        time.sleep(60)
+        volume_detached = self.virtual_machine.detach_volume(
+                self.apiclient,
+                self.volume_2
+                )
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
+        vm_tags = vm[0].tags
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.virtual_machine.id,
+            )
+        self.debug('#########################  test_06_remove_vcpolicy_tag_when_disk_detached tags ######################### ')
+
+        self.vc_policy_tags( volumes, vm_tags, vm)
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_07_delete_vcpolicy_tag(self):
+        """ Test delete vc_policy tag of VM"""
+        Tag.delete(self.apiclient,
+            resourceIds=self.virtual_machine.id,
+            resourceType='UserVm',
+            tags={'vc_policy': 'testing_vc_policy'})
+
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.virtual_machine.id,
+            )
+        self.debug('######################### test_07_delete_vcpolicy_tag  #########################')        
+        for v in volumes:
+            spvolume = self.spapi.volumeList(volumeName=v.id)
+            tags = spvolume[0].tags
+            for t in tags:
+                self.debug("######################### Storpool tag key:%s, value:%s ######################### " % (t, tags[t]))
+                self.assertFalse(t.lower() == 'vc_policy'.lower(), "There is VC Policy tag")
+  
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_08_vcpolicy_tag_to_reverted_disk(self):
+        tag = Tag.create(
+            self.apiclient,
+            resourceIds=self.virtual_machine2.id,
+            resourceType='UserVm',
+            tags={'vc_policy': 'testing_vc_policy'}
+        )
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine2.id)
+        vm_tags = vm[0].tags
+
+        volume = Volume.list(
+            self.apiclient,
+            virtualmachineid = self.virtual_machine2.id,
+            type = "ROOT"
+            )
+        self.debug('######################### test_08_vcpolicy_tag_to_reverted_disk tags before revert #########################')
+        self.vc_policy_tags(volume, vm_tags, vm)
+
+        snapshot = Snapshot.create(
+            self.apiclient, 
+            volume[0].id
+            )
+
+        virtual_machine = self.virtual_machine2.stop(
+            self.apiclient,
+            forced=True
+            )
+
+        cmd = revertSnapshot.revertSnapshotCmd()
+        cmd.id = snapshot.id
+        revertedn = self.apiclient.revertSnapshot(cmd)
+ 
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine2.id)
+        vm_tags = vm[0].tags
+        self.debug('######################### test_08_vcpolicy_tag_to_reverted_disk tags after revert #########################')
+
+        self.vc_policy_tags(volume, vm_tags, vm)
+        self._cleanup.append(snapshot)
+
+
+    def vc_policy_tags(self, volumes, vm_tags, vm):
         flag = False
         for v in volumes:
             spvolume = self.spapi.volumeList(volumeName=v.id)
@@ -237,63 +555,3 @@ class TestStoragePool(cloudstackTestCase):
                         self.assertEqual(tags[t], vm[0].id, "CVM tag is not the same as vm UUID")
             #self.assertEqual(tag.tags., second, msg)
         self.assertTrue(flag, "There aren't volumes with vm tags")
-
-    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_02_set_vcpolicy_tag_to_attached_disk(self):
-        """ Test set vc_policy tag to new disk attached to VM"""
-        volume_attached = self.virtual_machine.attach_volume(
-                self.apiclient,
-                self.volume_2
-                )
-        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
-        vm_tags = vm[0].tags
-        for vm_tag in vm_tags:
-            sp_volume = self.spapi.volumeList(volumeName=volume_attached.id)
-            for sp_tag in sp_volume[0].tags:
-                if sp_tag == vm_tag.key:
-                    self.debug("######################### StorPool tag %s , VM tag %s ######################### " % (sp_tag, vm_tag.key))
-                    self.assertEqual(sp_tag, vm_tag.key, "StorPool tag is not the same as the Virtual Machine tag")
-                    self.assertEqual(sp_volume[0].tags[sp_tag], vm_tag.value, "StorPool tag value is not the same as the Virtual Machine tag value")
-                if sp_tag == 'cvm':
-                    self.debug("#########################  StorPool tag value %s , VM uuid %s ######################### " % (sp_volume[0].tags[sp_tag], vm[0].id))
-                    self.assertEqual(sp_volume[0].tags[sp_tag], vm[0].id, "cvm tag is not the expected value")
-
-    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_03_remove_vcpolicy_tag_when_disk_detached(self):
-        """ Test remove vc_policy tag to disk detached from VM"""
-        time.sleep(60)
-        volume_detached = self.virtual_machine.detach_volume(
-                self.apiclient,
-                self.volume_2
-                )
-        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
-        vm_tags = vm[0].tags
-        for vm_tag in vm_tags:
-            vc = 'vc_policy'
-            if vm_tag.key.lower() == vc.lower():
-                sp_volume = self.spapi.volumeList(volumeName=self.volume_2.id)
-                for sp_tag in sp_volume[0].tags:
-                    self.assertFalse(sp_tag == vm_tag.key, "Sp tag is the same as vm tag")
-                    if sp_tag == 'cvm':
-                        self.assertEqual(sp_volume[0].tags[sp_tag], vm[0].id, "cvm tag is not the expected value")
-
-    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_04_delete_vcpolicy_tag(self):
-        """ Test delete vc_policy tag of VM"""
-        Tag.delete(self.apiclient,
-            resourceIds=self.virtual_machine.id,
-            resourceType='UserVm',
-            tags={'vc_policy': 'testing_vc_policy'})
-
-        volumes = list_volumes(
-            self.apiclient,
-            virtualmachineid = self.virtual_machine.id,
-            )
-        for v in volumes:
-            spvolume = self.spapi.volumeList(volumeName=v.id)
-            tags = spvolume[0].tags
-            for t in tags:
-                self.debug("######################### Storpool tag key:%s, value:%s ######################### " % (t, tags[t]))
-                self.assertFalse(t.lower() == 'vc_policy'.lower(), "There is VC Policy tag")
-        
-        
