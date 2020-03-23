@@ -97,7 +97,8 @@ public class StorPoolReplaceCommandsHelper{
                             StorPoolDetachVolumeCmdByAdmin.class,
                             StorPoolCreateVMSnapshotCmd.class,
                             StorPoolCreateTagsCmd.class,
-                            StorPoolDeleteTagsCmd.class));
+                            StorPoolDeleteTagsCmd.class,
+                            StorPoolDeleteTemplateCmd.class));
             for (Class<?> clazz : set) {
                 final APICommand at = clazz.getAnnotation(APICommand.class);
                 String name = at.name();

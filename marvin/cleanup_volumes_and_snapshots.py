@@ -20,7 +20,7 @@ from _ast import If
 import random
 import time
 
-from marvin.cloudstackAPI import (listTemplates, deleteSnapshot, deleteVolume)
+from marvin.cloudstackAPI import (listTemplates, deleteSnapshot, deleteVolume, destroyVirtualMachine)
 from marvin.cloudstackTestCase import cloudstackTestCase
 from marvin.codes import FAILED, KVM, PASS, XEN_SERVER, RUNNING
 from marvin.lib.base import (Account,
@@ -41,8 +41,9 @@ from marvin.lib.common import (get_zone,
                                list_disk_offering,
                                list_accounts,
                                list_storage_pools,
-                               list_service_offering
-                               , list_volumes, list_templates)
+                               list_service_offering,
+                               list_volumes,
+                               list_templates)
 from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_snapshot_on_nfs, isAlmostEqual, get_hypervisor_type
 from nose.plugins.attrib import attr
 from sepolicy.templates.etc_rw import if_admin_rules
@@ -202,10 +203,21 @@ class TestVmSnapshot(cloudstackTestCase):
     def tearDown(self):
         return
 
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_01_delete_all_virtual_machines(self):
+        """Test to delete VMs
+        """
+        virtual_machines = list_virtual_machines(self.apiclient)
+        for v in virtual_machines:
+                cmd = destroyVirtualMachine.destroyVirtualMachineCmd()
+                cmd.id = v.id
+                cmd.expunge = True
+                self.apiclient.destroyVirtualMachine(cmd)
+     
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_01_delete_all_snapshots(self):
-        """Test to revert VM snapshots
+    def test_02_delete_all_snapshots(self):
+        """Test to delete snapshots
         """
         snapshots = list_snapshots(self.apiclient)
         for s in snapshots:
@@ -215,8 +227,8 @@ class TestVmSnapshot(cloudstackTestCase):
                 self.apiclient.deleteSnapshot(cmd)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_02_delete_all_datadisks(self):
-        """Test to revert VM snapshots
+    def test_03_delete_all_datadisks(self):
+        """Test to delete volumes
         """
         volumes = list_volumes(self.apiclient)
         for s in volumes:

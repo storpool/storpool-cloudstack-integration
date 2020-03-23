@@ -1,6 +1,6 @@
 package org.apache.cloudstack.storage.motion;
 
-import java.sql.PreparedStatement;
+import java.util.List;
 import java.util.Map;
 
 import javax.inject.Inject;
@@ -10,14 +10,18 @@ import org.apache.cloudstack.engine.subsystem.api.storage.DataMotionStrategy;
 import org.apache.cloudstack.engine.subsystem.api.storage.DataObject;
 import org.apache.cloudstack.engine.subsystem.api.storage.DataStore;
 import org.apache.cloudstack.engine.subsystem.api.storage.DataStoreManager;
+import org.apache.cloudstack.engine.subsystem.api.storage.EndPoint;
+import org.apache.cloudstack.engine.subsystem.api.storage.EndPointSelector;
 import org.apache.cloudstack.engine.subsystem.api.storage.SnapshotDataFactory;
 import org.apache.cloudstack.engine.subsystem.api.storage.SnapshotInfo;
 import org.apache.cloudstack.engine.subsystem.api.storage.StrategyPriority;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeInfo;
 import org.apache.cloudstack.framework.async.AsyncCompletionCallback;
+import org.apache.cloudstack.framework.config.dao.ConfigurationDao;
+import org.apache.cloudstack.storage.RemoteHostEndPoint;
 import org.apache.cloudstack.storage.command.CopyCmdAnswer;
-import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
-import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
+import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
@@ -27,44 +31,43 @@ import org.apache.cloudstack.storage.to.TemplateObjectTO;
 import org.apache.log4j.Logger;
 import org.springframework.stereotype.Component;
 
-import com.cloud.agent.api.Answer;
+import com.cloud.agent.api.Command;
+import com.cloud.agent.api.storage.StorpoolBackupTemplateFromSnapshotCommand;
 import com.cloud.agent.api.to.DataObjectType;
 import com.cloud.agent.api.to.VirtualMachineTO;
+import com.cloud.configuration.Config;
+import com.cloud.dc.ClusterVO;
+import com.cloud.dc.dao.ClusterDao;
 import com.cloud.host.Host;
-import com.cloud.storage.SnapshotVO;
-import com.cloud.storage.VolumeVO;
-import com.cloud.storage.dao.SnapshotDao;
-import com.cloud.storage.dao.VolumeDao;
-import com.cloud.utils.db.TransactionLegacy;
+import com.cloud.host.HostVO;
+import com.cloud.host.dao.HostDao;
+import com.cloud.storage.DataStoreRole;
+import com.cloud.utils.NumbersUtil;
+import com.cloud.vm.VirtualMachineManager;
 
 @Component
 public class StorPoolDataMotionStrategy implements DataMotionStrategy{
     private static final Logger log = Logger.getLogger(StorPoolDataMotionStrategy.class);
 
     @Inject
-    private PrimaryDataStoreDao _primaryDataStoreDao;
-    @Inject
-    private SnapshotDao _snapshotDao;
-    @Inject
-    private VolumeDao _volumeDao;
-    @Inject
     private SnapshotDataFactory _snapshotDataFactory;
     @Inject
     private DataStoreManager _dataStore;
-
-    private static final String UPDATE_VM_TEMPLATE = "UPDATE vm_template SET direct_download = 1 WHERE id = ?";
+    @Inject
+    private ConfigurationDao configDao;
+    @Inject
+    private EndPointSelector selector;
+    @Inject
+    private TemplateDataStoreDao templStoreDao;
+    @Inject ClusterDao clusterDao;
+    @Inject HostDao hostDao;
 
     @Override
     public StrategyPriority canHandle(DataObject srcData, DataObject destData) {
         DataObjectType srcType = srcData.getType();
         DataObjectType dstType = destData.getType();
         if (srcType == DataObjectType.SNAPSHOT && dstType == DataObjectType.TEMPLATE && BackupManager.BypassSecondaryStorage.value()) {
-            SnapshotVO snapshot = _snapshotDao.findById(srcData.getTO().getId());
-            VolumeVO volume = _volumeDao.findByIdIncludingRemoved(snapshot.getVolumeId());
-            StoragePoolVO storage = _primaryDataStoreDao.findById(volume.getPoolId());
-            if (storage.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
-                return StrategyPriority.HIGHEST;
-            }
+            return StorpoolUtil.snapshotExists(srcData.getUuid(), new SpConnectionDesc(srcData.getDataStore().getUuid())) ? StrategyPriority.HIGHEST : StrategyPriority.CANT_HANDLE;
         }
         return StrategyPriority.CANT_HANDLE;
     }
@@ -87,28 +90,41 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
         String name = template.getUuid();
         String parentName = srcData.getUuid();
 
-        Long size = (template.getSize() == null || template.getSize() < sInfo.getSize()) ? sInfo.getSize() : template.getSize() ;
-        SpApiResponse res = StorpoolUtil.volumeCreate(name, parentName, size, conn);
-        Answer answer = null;
+        SpApiResponse res = StorpoolUtil.volumeCreate(name, parentName, sInfo.getSize(), conn);
+        CopyCmdAnswer answer = null;
         String err = null;
         if (res.getError() != null) {
             log.debug(String.format("Could not create volume from snapshot with ID=%s", snapshot.getId()));
             StorpoolUtil.spLog("Volume create failed with error=%s", res.getError().getDescr());
             err = res.getError().getDescr();
-            answer = new CopyCmdAnswer(err);
-        }else {
-            String path  = StorpoolUtil.devPath(name);
-            template.setPath(path);
-            template.setSize(size);
-            updateVmTemplate(template.getId());
-            SpApiResponse resSnapshot = StorpoolUtil.volumeFreeze(name, conn);
-            if (resSnapshot.getError() != null) {
-                log.debug(String.format("Could not snapshot volume with ID=%s", snapshot.getId()));
-                StorpoolUtil.spLog("Volume freeze failed with error=%s", resSnapshot.getError().getDescr());
-                err = resSnapshot.getError().getDescr();
-                answer = new CopyCmdAnswer(err);
-            }else {
-                answer = new CopyCmdAnswer(template);
+        } else {
+            snapshot.setPath(StorpoolUtil.devPath(sInfo.getUuid()));
+            String value = configDao.getValue(Config.BackupSnapshotWait.toString());
+            Command backupSnapshot = new StorpoolBackupTemplateFromSnapshotCommand(snapshot, template,
+                    NumbersUtil.parseInt(value, Integer.parseInt(Config.BackupSnapshotWait.getDefaultValue())), VirtualMachineManager.ExecuteInSequence.value());
+
+            final String snapName = ((SnapshotInfo) srcData).getUuid();
+            Long clusterId = findClusterId(StorpoolUtil.getSnapshotClusterID(snapName, conn), srcData.getDataStore().getScope().getScopeId());
+            EndPoint ep2 = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, destData);
+            if (ep2 == null) {
+                err = "No remote endpoint to send command, check if host or ssvm is down?";
+            } else {
+                answer = (CopyCmdAnswer) ep2.sendMessage(backupSnapshot);
+                if (answer != null && answer.getResult()) {
+                    SpApiResponse resSnapshot = StorpoolUtil.volumeFreeze(name, conn);
+                    if (resSnapshot.getError() != null) {
+                        log.debug(String.format("Could not snapshot volume with ID=%s", snapshot.getId()));
+                        StorpoolUtil.spLog("Volume freeze failed with error=%s", resSnapshot.getError().getDescr());
+                        err = resSnapshot.getError().getDescr();
+                        StorpoolUtil.volumeDelete(name, conn);
+                    }
+                    else {
+                        updateVmStoreTemplate(template.getId(), template.getDataStore().getRole(), StorpoolUtil.devPath(name));
+                    }
+                }else {
+                    err = "Could not copy template to secondary " + answer.getResult();
+                    StorpoolUtil.volumeDelete(name, conn);
+                }
             }
         }
         StorpoolUtil.spLog("StorPoolDataMotionStrategy.copyAsync Creating snapshot=%s for StorPool template=%s", name, conn.getTemplateName());
@@ -124,17 +140,26 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
         throw new UnsupportedOperationException("Unsupport operation to migrate virtual machine with volumes to another host");
     }
 
-    private void updateVmTemplate(Long id) {
-        TransactionLegacy txn = TransactionLegacy.currentTxn();
-        PreparedStatement pstmt = null;
-        String sql = UPDATE_VM_TEMPLATE;
-        try {
-            pstmt = txn.prepareAutoCloseStatement(sql);
-            pstmt.setLong(1, id);
-            pstmt.executeUpdate();
-        } catch (Exception ex) {
-            log.error("error updating vm_template", ex);
+    private Long findClusterId(String clusterId, Long zoneId) {
+        List<ClusterVO> clusterVo = clusterDao.listAll();
+        for (ClusterVO clusterVO2 : clusterVo) {
+            StorpoolUtil.spLog("StorPool cluset id=%s, cluster id value=%s, equal=%s", clusterId,
+                    BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()), clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString()));
+            if (clusterId != null && clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString())) {
+                return clusterVO2.getId();
+            }
         }
+        return null;
     }
 
+    private HostVO findHostByCluster(Long clusterId) {
+        List<HostVO> host = hostDao.findByClusterId(clusterId);
+        return host != null ? host.get(0) : null;
+    }
+
+    private void updateVmStoreTemplate(Long id, DataStoreRole role, String path) {
+        TemplateDataStoreVO templ = templStoreDao.findByTemplate(id, role);
+        templ.setLocalDownloadPath(path);
+        templStoreDao.persist(templ);
+    }
 }
