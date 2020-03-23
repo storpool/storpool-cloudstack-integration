@@ -52,13 +52,15 @@ import time
 import pprint
 import random
 import subprocess
-import storpool
+from storpool import spapi
 from marvin.configGenerator import configuration
 
 class TestStoragePool(cloudstackTestCase):
 
     @classmethod
     def setUpClass(cls):
+        cls.spapi = spapi.Api.fromConfig(multiCluster=True)
+
         testClient = super(TestStoragePool, cls).getClsTestClient()
         cls.apiclient = testClient.getApiClient()
         cls.unsupportedHypervisor = False
@@ -663,99 +665,8 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsNotNone(volume, "Could not create volume from snapshot")
         self.assertIsInstance(volume, Volume, "Volume is not instance of Volume")
 
-
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_08_snapshot_to_template(self):
-        ''' Create template from snapshot
-        '''
-        volume = Volume.list(
-            self.apiclient,
-            virtualmachineid = self.virtual_machine.id,
-            type = "ROOT"
-            )
-
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage" )
-        if (backup_config[0].value == "true"):
-            backup_config = Configurations.update(self.apiclient,
-            name = "sp.bypass.secondary.storage",
-            value = "false")
-        snapshot = Snapshot.create(
-           self.apiclient,
-            volume_id = volume[0].id
-            )
-        self.assertIsNotNone(snapshot, "Could not create snapshot")
-        self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
-
-        template = self.create_template_from_snapshot(
-            self.apiclient,
-            self.services,
-            snapshotid = snapshot.id
-            )
-        virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
-            zoneid=self.zone.id,
-            templateid=template.id,
-            serviceofferingid=self.service_offering.id,
-            hypervisor=self.hypervisor,
-            rootdisksize=10
-            )
-        ssh_client = virtual_machine.get_ssh_client()
-
-        self.assertIsNotNone(template, "Template is None")
-        self.assertIsInstance(template, Template, "Template is instance of template")
-        self._cleanup.append(snapshot)
-        self._cleanup.append(template)
-        self._cleanup.append(virtual_machine)
-
-    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_09_snapshot_to_template_bypass_secondary(self):
-        ''' Test Create Template from snapshot bypassing secondary storage
-        '''
-        ##cls.virtual_machine
-        volume = list_volumes(
-                        self.apiclient,
-                        virtualmachineid = self.virtual_machine.id,
-                        type = "ROOT"
-                        )
-        snapshot = Snapshot.create(
-           self.apiclient,
-            volume_id = volume[0].id
-            )
-
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage" )
-        if (backup_config[0].value == "false"):
-            backup_config = Configurations.update(self.apiclient,
-            name = "sp.bypass.secondary.storage",
-            value = "true")
-        self.assertIsNotNone(snapshot, "Could not create snapshot")
-        self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
-
-        template = self.create_template_from_snapshot(
-            self.apiclient,
-            self.services,
-            snapshotid = snapshot.id
-            )
-        virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
-            zoneid=self.zone.id,
-            templateid=template.id,
-            serviceofferingid=self.service_offering.id,
-            hypervisor=self.hypervisor,
-            rootdisksize=10
-            )
-        ssh_client = virtual_machine.get_ssh_client()
-        self.assertIsNotNone(template, "Template is None")
-        self.assertIsInstance(template, Template, "Template is instance of template")
-        self._cleanup.append(snapshot)
-        self._cleanup.append(template)
-        self._cleanup.append(virtual_machine)
-
-    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_10_snapshot_detached_volume(self):
+    def test_08_snapshot_detached_volume(self):
         ''' Test Snapshot Detached Volume
         '''
         self.virtual_machine.stop(
@@ -791,7 +702,7 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsNone(snapshot, "Snapshot was not deleted")
  
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_11_snapshot_root_disk(self):
+    def test_09_snapshot_root_disk(self):
         ''' Test ROOT Disk Snapshot 
         '''
         vm = VirtualMachine.create(self.apiclient,
@@ -822,7 +733,7 @@ class TestStoragePool(cloudstackTestCase):
         self._cleanup.append(vm)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_12_volume_to_template(self):
+    def test_10_volume_to_template(self):
         ''' Create Template From ROOT Volume
         '''
         volume = Volume.list(
@@ -854,7 +765,7 @@ class TestStoragePool(cloudstackTestCase):
         self._cleanup.append(virtual_machine)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_13_migrate_vm_to_another_storage(self):
+    def test_11_migrate_vm_to_another_storage(self):
         ''' Migrate VM to another Primary Storage
         '''
         list_volumes_of_vm = list_volumes(
@@ -878,7 +789,7 @@ class TestStoragePool(cloudstackTestCase):
 
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_14_migrate_volume_to_another_storage(self):
+    def test_12_migrate_volume_to_another_storage(self):
         ''' Migrate Volume To Another Primary Storage
         '''
         self.assertFalse(hasattr(self.volume, 'virtualmachineid') , "Volume is not detached")
@@ -895,7 +806,7 @@ class TestStoragePool(cloudstackTestCase):
         self.assertEqual(volume.storageid, self.primary_storage2.id, "Storage is the same")
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_15_create_vm_on_another_storpool_storage(self):
+    def test_13_create_vm_on_another_storpool_storage(self):
         """ Create Virtual Machine on another StorPool primary StoragePool"""
         virtual_machine = VirtualMachine.create(self.apiclient,
             {"name":"StorPool-%d" % random.randint(0, 100)},
@@ -909,7 +820,7 @@ class TestStoragePool(cloudstackTestCase):
         self._cleanup.append(virtual_machine)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_16_create_vm_on_second_cluster_with_template_from_first(self):
+    def test_14_create_vm_on_second_cluster_with_template_from_first(self):
         """ Create Virtual Machine On Working Cluster With Template Created on Another """
         volume = Volume.list(
             self.apiclient,
@@ -954,7 +865,7 @@ class TestStoragePool(cloudstackTestCase):
         self._cleanup.append(snapshot)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_17_snapshot_to_volume_of_root_disk(self):
+    def test_15_snapshot_to_volume_of_root_disk(self):
         ''' Create volume from snapshot
         '''
         virtual_machine = VirtualMachine.create(self.apiclient,
@@ -991,7 +902,7 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsInstance(volume, Volume, "Volume is not instance of Volume")
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_18_download_volume(self):
+    def test_16_download_volume(self):
         vol = self.volume.extract(
             self.apiclient,
             volume_id = self.volume.id,
@@ -1000,47 +911,6 @@ class TestStoragePool(cloudstackTestCase):
             )
         self.assertIsNotNone(vol, "Volume is None")
         self.assertIsNotNone(vol.url, "No URL provided")
-
-    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_19_snapshot_volume_with_secondary(self):
-
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage" )
-        if (backup_config[0].value == "true"):
-            backup_config = Configurations.update(self.apiclient,
-            name = "sp.bypass.secondary.storage",
-            value = "false")
-        volume = list_volumes(
-                        self.apiclient,
-                        virtualmachineid = self.virtual_machine.id,
-                        type = "ROOT"
-                        )
-        snapshot = Snapshot.create(
-           self.apiclient,
-            volume_id = volume[0].id
-            )
-        self.assertIsNotNone(snapshot, "Could not create snapshot")
-
-    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_20_snapshot_volume_bypass_secondary(self):
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage" )
-        if (backup_config[0].value == "false"):
-            backup_config = Configurations.update(self.apiclient,
-            name = "sp.bypass.secondary.storage",
-            value = "true")
-        volume = list_volumes(
-                        self.apiclient,
-                        virtualmachineid = self.virtual_machine.id,
-                        type = "ROOT"
-                        )
-        snapshot = Snapshot.create(
-           self.apiclient,
-            volume_id = volume[0].id
-            )
-        self.assertIsNotNone(snapshot, "Could not create snapshot")
 
     @classmethod
     def create_volume(self, apiclient, zoneid=None, snapshotid=None):
