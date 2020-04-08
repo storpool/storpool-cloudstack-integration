@@ -15,6 +15,7 @@ import org.apache.log4j.Logger;
 import com.cloud.exception.ConcurrentOperationException;
 import com.cloud.exception.InsufficientCapacityException;
 import com.cloud.exception.NetworkRuleConflictException;
+import com.cloud.exception.PermissionDeniedException;
 import com.cloud.exception.ResourceAllocationException;
 import com.cloud.exception.ResourceUnavailableException;
 import com.cloud.server.ResourceTag;
@@ -60,15 +61,16 @@ public class StorPoolCreateTagsCmd extends BaseAsyncCmd{
     @Override
     public void execute() throws ResourceUnavailableException, InsufficientCapacityException,
                                     ServerApiException, ConcurrentOperationException,
-                                    ResourceAllocationException, NetworkRuleConflictException {
+                                    ResourceAllocationException, NetworkRuleConflictException, PermissionDeniedException {
         replaceCommands.ensureCmdHasRequiredValues(createTagsCmd, this);
+        String value = createTagsCmd.getTags().get(StorpoolUtil.SP_VC_POLICY);
+        replaceCommands.hasRights(value);
         try {
             createTagsCmd.execute();
         }
         catch (CloudRuntimeException e) {
             throw e;
         }
-        String value = createTagsCmd.getTags().get(StorpoolUtil.SP_VC_POLICY);
 
         if (createTagsCmd.getResourceType() == ResourceObjectType.UserVm && value != null) {
             for (String resourceId : createTagsCmd.getResourceIds()) {

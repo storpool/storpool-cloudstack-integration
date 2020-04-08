@@ -16,6 +16,7 @@ import com.cloud.exception.ConcurrentOperationException;
 import com.cloud.exception.InsufficientCapacityException;
 import com.cloud.exception.InvalidParameterValueException;
 import com.cloud.exception.NetworkRuleConflictException;
+import com.cloud.exception.PermissionDeniedException;
 import com.cloud.exception.ResourceAllocationException;
 import com.cloud.exception.ResourceUnavailableException;
 import com.cloud.server.ResourceTag;
@@ -60,15 +61,16 @@ public class StorPoolDeleteTagsCmd extends BaseAsyncCmd{
     @Override
     public void execute() throws ResourceUnavailableException, InsufficientCapacityException,
                                     ServerApiException, ConcurrentOperationException,
-                                    ResourceAllocationException, NetworkRuleConflictException {
+                                    ResourceAllocationException, NetworkRuleConflictException, PermissionDeniedException {
         replaceCommands.ensureCmdHasRequiredValues(deleteTagsCmd, this);
+        String value = deleteTagsCmd.getTags().get(StorpoolUtil.SP_VC_POLICY);
+        replaceCommands.hasRights(value);
         try {
             deleteTagsCmd.execute();
         }
         catch (InvalidParameterValueException e) {
             throw e;
         }
-        String value = deleteTagsCmd.getTags().get(StorpoolUtil.SP_VC_POLICY);
 
         if (value != null && deleteTagsCmd.getResourceType() == ResourceObjectType.UserVm) {
             for (String resourceId : deleteTagsCmd.getResourceIds()) {
