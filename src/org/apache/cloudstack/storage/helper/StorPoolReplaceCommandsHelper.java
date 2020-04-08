@@ -12,6 +12,10 @@ import java.util.Map;
 
 import javax.inject.Inject;
 
+import org.apache.cloudstack.acl.Role;
+import org.apache.cloudstack.acl.RoleType;
+import org.apache.cloudstack.acl.RoleVO;
+import org.apache.cloudstack.acl.dao.RoleDao;
 import org.apache.cloudstack.api.APICommand;
 import org.apache.cloudstack.api.BaseAsyncCmd;
 import org.apache.cloudstack.api.BaseAsyncCreateCmd;
@@ -39,6 +43,7 @@ import com.cloud.api.ApiServer;
 import com.cloud.api.dispatch.DispatchChainFactory;
 import com.cloud.api.dispatch.DispatchTask;
 import com.cloud.exception.InvalidParameterValueException;
+import com.cloud.exception.PermissionDeniedException;
 import com.cloud.exception.ResourceAllocationException;
 import com.cloud.gpu.GPU;
 import com.cloud.hypervisor.Hypervisor.HypervisorType;
@@ -206,6 +211,10 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
         private PrimaryDataStoreDao storagePool;
         @Inject
         private VMInstanceDao _vmInstanceDao;
+        @Inject
+        private RoleDao roleDao;
+        @Inject
+        private AccountManager accountManager;
 
         private int _vmSnapshotMax = VMSnapshotManager.VMSNAPSHOTMAX;
 
@@ -391,5 +400,44 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
             VMSnapshotVO vmSnapshotVo = _vmSnapshotDao.findByUuid(vmSnapShotId);
             return vmSnapshotVo.getVmId();
        }
+
+        public boolean hasRights(String value) {
+            if (value != null) {
+                Account caller = getCurrentAccount();
+                if (caller == null || caller.getRoleId() == null) {
+                    throw new PermissionDeniedException("Restricted API called by an invalid user account");
+                }
+                Role callerRole = findRole(caller.getRoleId());
+                if (callerRole == null || callerRole.getRoleType() != RoleType.Admin) {
+                    throw new PermissionDeniedException(
+                            "Restricted API called by an user account of non-Admin role type");
+                }
+            }
+            return true;
+        }
+
+        private Role findRole(Long id) {
+            if (id == null || id < 1L) {
+                log.trace(String.format("Role ID is invalid [%s]", id));
+                return null;
+            }
+            RoleVO role = roleDao.findById(id);
+            if (role == null) {
+                log.trace(String.format("Role not found [id=%s]", id));
+                return null;
+            }
+            Account account = getCurrentAccount();
+            if (!accountManager.isRootAdmin(account.getId()) && RoleType.Admin == role.getRoleType()) {
+                log.debug(
+                        String.format("Role [id=%s, name=%s] is of 'Admin' type and is only visible to 'Root admins'.",
+                                id, role.getName()));
+                return null;
+            }
+            return role;
+        }
+
+        private Account getCurrentAccount() {
+            return CallContext.current().getCallingAccount();
+        }
     }
 }
