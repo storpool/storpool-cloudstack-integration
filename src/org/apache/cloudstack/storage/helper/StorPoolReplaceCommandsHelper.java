@@ -1,6 +1,8 @@
 package org.apache.cloudstack.storage.helper;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,6 +15,14 @@ import javax.inject.Inject;
 import org.apache.cloudstack.api.APICommand;
 import org.apache.cloudstack.api.BaseAsyncCmd;
 import org.apache.cloudstack.api.BaseAsyncCreateCmd;
+import org.apache.cloudstack.api.command.admin.volume.AttachVolumeCmdByAdmin;
+import org.apache.cloudstack.api.command.admin.volume.DetachVolumeCmdByAdmin;
+import org.apache.cloudstack.api.command.user.tag.CreateTagsCmd;
+import org.apache.cloudstack.api.command.user.tag.DeleteTagsCmd;
+import org.apache.cloudstack.api.command.user.template.DeleteTemplateCmd;
+import org.apache.cloudstack.api.command.user.vmsnapshot.CreateVMSnapshotCmd;
+import org.apache.cloudstack.api.command.user.volume.AttachVolumeCmd;
+import org.apache.cloudstack.api.command.user.volume.DetachVolumeCmd;
 import org.apache.cloudstack.context.CallContext;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeDataFactory;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeInfo;
@@ -46,6 +56,7 @@ import com.cloud.user.AccountManager;
 import com.cloud.uservm.UserVm;
 import com.cloud.utils.DateUtil;
 import com.cloud.utils.component.ComponentContext;
+import com.cloud.utils.component.PluggableService;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.UserVmVO;
 import com.cloud.vm.VMInstanceVO;
@@ -60,7 +71,7 @@ import com.cloud.vm.snapshot.dao.VMSnapshotDao;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-public class StorPoolReplaceCommandsHelper{
+public class StorPoolReplaceCommandsHelper implements PluggableService{
     private static final Logger log = Logger.getLogger(StorPoolReplaceCommandsHelper.class);
 
     private static StorPoolReplaceCommandsUtil replaceCommandsUtil;
@@ -76,7 +87,8 @@ public class StorPoolReplaceCommandsHelper{
     public void init() {
         this.apiServer = ComponentContext.getComponent(ApiServer.class);
         try {
-            addCommandsBeforeRealInit();
+           // addCommandsBeforeRealInit();
+            changeAnnotations();
         } catch (Exception e) {
             log.info(e.getMessage());
         }
@@ -112,6 +124,61 @@ public class StorPoolReplaceCommandsHelper{
         } catch (NoSuchFieldException | IllegalAccessException e) {
             log.error(e.getMessage());
         }
+    }
+
+    //Removing real CloudStack commands' names with "". This will help to initialize and work with StorPool's commands
+    private static void changeAnnotations() {
+        List<Annotation> annotations = new ArrayList<>(Arrays.asList(
+                AttachVolumeCmd.class.getAnnotation(APICommand.class),
+                AttachVolumeCmdByAdmin.class.getAnnotation(APICommand.class),
+                DetachVolumeCmd.class.getAnnotation(APICommand.class),
+                DetachVolumeCmdByAdmin.class.getAnnotation(APICommand.class),
+                CreateTagsCmd.class.getAnnotation(APICommand.class),
+                DeleteTagsCmd.class.getAnnotation(APICommand.class),
+                CreateVMSnapshotCmd.class.getAnnotation(APICommand.class),
+                DeleteTemplateCmd.class.getAnnotation(APICommand.class)
+                ));
+        changeAnnotationValue(annotations, "name", "");
+    }
+
+    public static void changeAnnotationValue(List<Annotation> annotations, String key, Object newValue){
+        for (Annotation annotation : annotations) {
+            Object handler = Proxy.getInvocationHandler(annotation);
+            Field field;
+            try {
+                field = handler.getClass().getDeclaredField("memberValues");
+            } catch (NoSuchFieldException | SecurityException e) {
+                throw new IllegalStateException(e);
+            }
+            field.setAccessible(true);
+            Map<String, Object> memberValues;
+            try {
+                memberValues = (Map<String, Object>) field.get(handler);
+            } catch (IllegalArgumentException | IllegalAccessException e) {
+                throw new IllegalStateException(e);
+            }
+            Object oldValue = memberValues.get(key);
+            if (oldValue == null || oldValue.getClass() != newValue.getClass()) {
+                throw new IllegalArgumentException();
+            }
+            memberValues.put(key,newValue);
+            StorpoolUtil.spLog("CloudStack command old value=%s, replaced with new value=%s", oldValue, newValue);
+        }
+    }
+
+    @Override
+    public List<Class<?>> getCommands() {
+        final List<Class<?>> cmdList = new ArrayList<Class<?>>(
+                Arrays.asList(
+                        StorPoolAttachVolumeCmdByAdmin.class,
+                        StorPoolAttachVolumeCmd.class,
+                        StorPoolDetachVolumeCmd.class,
+                        StorPoolDetachVolumeCmdByAdmin.class,
+                        StorPoolCreateVMSnapshotCmd.class,
+                        StorPoolCreateTagsCmd.class,
+                        StorPoolDeleteTagsCmd.class,
+                        StorPoolDeleteTemplateCmd.class));
+        return cmdList;
     }
 
     public static class StorPoolReplaceCommandsUtil extends VMSnapshotManagerImpl{
