@@ -511,7 +511,10 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         err = String.format("Could not delete old Storpool volume %s. Error: %s", name, resp.getError());
                     }
                 }
-
+                if (!StorpoolUtil.snapshotExists(parentName, conn)) {
+                    err = String.format("Snapshot=%s does not exist on StorPool. Will recreate it first on primary", parentName);
+                    vmTemplatePoolDao.remove(templStoragePoolVO.getId());
+                }
                 if (err == null) {
                     long size = vinfo.getSize();
                     long snapshotSize = StorpoolUtil.snapshotSize(parentName, conn);
