@@ -912,6 +912,58 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsNotNone(vol, "Volume is None")
         self.assertIsNotNone(vol.url, "No URL provided")
 
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_17_create_vm_from_template_not_on_storpool(self):
+        ''' Create virtual machine from template which for some reason is deleted from StorPool, but exists in template_spoool_ref DB tables '''
+
+        volume = Volume.list(
+            self.apiclient,
+            virtualmachineid = self.virtual_machine.id,
+            type = "ROOT"
+            )
+
+        self.virtual_machine.stop(self.apiclient)
+
+        template = self.create_template_from_snapshot(
+            self.apiclient,
+            self.services,
+            volumeid = volume[0].id
+            )
+
+        virtual_machine = VirtualMachine.create(self.apiclient,
+            {"name":"StorPool-%d" % random.randint(0, 100)},
+            zoneid=self.zone.id,
+            templateid=template.id,
+            serviceofferingid=self.service_offering.id,
+            hypervisor=self.hypervisor,
+            rootdisksize=10
+            )
+        ssh_client = virtual_machine.get_ssh_client(reconnect= True)
+        name = 'ssd-' + template.id
+        try:
+            sp_snapshot = self.spapi.snapshotList(snapshotName = name)
+            self.spapi.snapshotDelete(snapshotName = name)
+        except spapi.ApiError as err:
+            raise Exception(err)
+
+        virtual_machine2 = VirtualMachine.create(self.apiclient,
+            {"name":"StorPool-%d" % random.randint(0, 100)},
+            zoneid=self.zone.id,
+            templateid=template.id,
+            serviceofferingid=self.service_offering.id,
+            hypervisor=self.hypervisor,
+            rootdisksize=10
+            )
+
+        ssh_client = virtual_machine2.get_ssh_client(reconnect= True)
+        self.assertIsNotNone(template, "Template is None")
+        self.assertIsInstance(template, Template, "Template is instance of template")
+        self._cleanup.append(template)
+        self._cleanup.append(virtual_machine)
+        self._cleanup.append(virtual_machine2)
+        
+        
+
     @classmethod
     def create_volume(self, apiclient, zoneid=None, snapshotid=None):
         """Create Volume"""
