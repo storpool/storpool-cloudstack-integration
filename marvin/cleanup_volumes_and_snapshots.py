@@ -209,10 +209,13 @@ class TestVmSnapshot(cloudstackTestCase):
         """
         virtual_machines = list_virtual_machines(self.apiclient)
         for v in virtual_machines:
+            try:
                 cmd = destroyVirtualMachine.destroyVirtualMachineCmd()
                 cmd.id = v.id
                 cmd.expunge = True
                 self.apiclient.destroyVirtualMachine(cmd)
+            except Exception as e:
+                continue
      
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")

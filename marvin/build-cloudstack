@@ -1,0 +1,76 @@
+#!/bin/sh
+
+set -e
+set -x
+
+usage()
+{
+	cat <<'EOUSAGE'
+Usage:	build-cloudstack -c commit-id -d srcdir -f forked-dir -r username@hostname -s username@hostname -t username@hostname -a username@hostname
+...and stuff.
+EOUSAGE
+}
+
+unset srcdir commit_id forked remote second_remote third_remote fourth_remote
+while getopts 'c:d:f:r:s:t:a:' o; do
+	case "$o" in
+		c)
+			if [ "${OPTARG#-}" != "$OPTARG" ]; then
+				echo "The commit ID cannot start with a dash" 1>&2
+				usage 1>&2
+				exit 1
+			fi
+			commit_id="$OPTARG"
+			;;
+
+		d)
+			srcdir="$OPTARG"
+			;;
+
+		f)
+			forked="$OPTARG"
+			;;
+
+		r)
+			remote="$OPTARG"
+			;;
+		s)	
+			second_remote="$OPTARG"
+			;;
+		t)	
+			third_remote="$OPTARG"
+			;;
+		a)	
+			fourth_remote="$OPTARG"
+			;;
+		*)
+			usage 1>&2
+			exit 1
+			;;
+	esac
+done
+
+if [ -z "$commit_id" ] || [ -z "$srcdir" ] || [ -z "$forked" ] || [ -z "$remote" ] || [ -z "$second_remote" ]; then
+	usage 1>&2
+	exit 1
+fi
+
+cd -- "$srcdir"
+git checkout "$commit_id"
+mvn clean install
+
+cp -- target/cloud-plugin-storage-volume-storpool-*.0.jar "$forked/plugins/storage/volume/"
+scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$remote:/usr/share/cloudstack-agent/lib/"
+ssh -- "$remote" systemctl restart cloudstack-agent
+scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$second_remote:/usr/share/cloudstack-agent/lib/"
+ssh -- "$second_remote" systemctl restart cloudstack-agent
+
+if [ -n "$third_remote" ]; then
+	scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$third_remote:/usr/share/cloudstack-agent/lib/"
+	ssh -- "$third_remote" systemctl restart cloudstack-agent
+fi
+
+if [ -n "$fourth_remote" ]; then
+	scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$fourth_remote:/usr/share/cloudstack-agent/lib/"
+	ssh -- "$fourth_remote" systemctl restart cloudstack-agent
+fi
