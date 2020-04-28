@@ -21,7 +21,9 @@ import javax.inject.Inject;
 import org.apache.cloudstack.engine.subsystem.api.storage.SnapshotInfo;
 import org.apache.cloudstack.engine.subsystem.api.storage.StrategyPriority;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
+import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
@@ -32,6 +34,8 @@ import com.cloud.storage.Snapshot;
 import com.cloud.storage.SnapshotVO;
 import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.SnapshotDao;
+import com.cloud.storage.dao.SnapshotDetailsDao;
+import com.cloud.storage.dao.SnapshotDetailsVO;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.utils.fsm.NoTransitionException;
 
@@ -43,6 +47,8 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
     @Inject private SnapshotDao _snapshotDao;
     @Inject private PrimaryDataStoreDao _primaryDataStoreDao;
     @Inject private VolumeDao _volumeDao;
+    @Inject private SnapshotDataStoreDao _snapshotStoreDao;
+    @Inject private SnapshotDetailsDao _snapshotDetailsDao;
 
     @Override
     public SnapshotInfo backupSnapshot(SnapshotInfo snapshotInfo) {
@@ -63,13 +69,12 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
 
     @Override
     public boolean deleteSnapshot(Long snapshotId) {
-        StorpoolUtil.spLog("StorpoolSnapshotStrategy.deleteSnapshot: %d", snapshotId);
 
         final SnapshotVO snapshotVO = _snapshotDao.findById(snapshotId);
-        final String name = snapshotVO.getUuid();
+        VolumeVO volume = _volumeDao.findByIdIncludingRemoved(snapshotVO.getVolumeId());
+        String name = StorPoolHelper.getSnapshotName(snapshotId, snapshotVO.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
         boolean res = false;
         // clean-up snapshot from Storpool storage pools
-        VolumeVO volume = _volumeDao.findByIdIncludingRemoved(snapshotVO.getVolumeId());
         StoragePoolVO storage = _primaryDataStoreDao.findById(volume.getPoolId());
         if (storage.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
             SpConnectionDesc conn = new SpConnectionDesc(storage.getUuid());
@@ -79,7 +84,12 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
                  log.error(err);
                  StorpoolUtil.spLog(err);
             }else {
+                SnapshotDetailsVO snapshotDetails = _snapshotDetailsDao.findDetail(snapshotId, snapshotVO.getUuid());
+                if (snapshotDetails != null) {
+                    _snapshotDetailsDao.removeDetails(snapshotId);
+                }
                  res = super.deleteSnapshot(snapshotId);
+                 StorpoolUtil.spLog("StorpoolSnapshotStrategy.deleteSnapshot: executed successfuly=%s, snapshot uuid=%s, name=%s", res, snapshotVO.getUuid(), name);
             }
         }
 
@@ -96,13 +106,20 @@ public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
 
         VolumeVO volume = _volumeDao.findByIdIncludingRemoved(snapshot.getVolumeId());
         StoragePoolVO storage = _primaryDataStoreDao.findById(volume.getPoolId());
+        String name = StorPoolHelper.getSnapshotName(snapshot.getId(), snapshot.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
         if (storage.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
             SpConnectionDesc conn = new SpConnectionDesc(storage.getUuid());
-            if (StorpoolUtil.snapshotExists(snapshot.getUuid(), conn)) {
+            if (StorpoolUtil.snapshotExists(name, conn)) {
+                StorpoolUtil.spLog("StorpoolSnapshotStrategy.canHandle: globalId=%s", name);
+
                 return StrategyPriority.HIGHEST;
             }
         }
-
+        SnapshotDetailsVO snapshotDetails = _snapshotDetailsDao.findDetail(snapshot.getId(), snapshot.getUuid());
+        if (snapshotDetails != null) {
+            _snapshotDetailsDao.remove(snapshotDetails.getId());
+        }
         return StrategyPriority.CANT_HANDLE;
     }
+
 }

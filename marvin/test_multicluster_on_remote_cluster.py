@@ -53,6 +53,7 @@ from marvin.lib.common import (get_zone,
                                list_clusters)
 from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_snapshot_on_nfs, isAlmostEqual
 from nose.plugins.attrib import attr
+import uuid
 
 import storpool
 
@@ -172,14 +173,7 @@ class TestStoragePool(cloudstackTestCase):
             zoneid=cls.zone.id,
             diskofferingid=disk_offerings[0].id,
         )
-#  
-#         cls.volume_2 = Volume.create(
-#             cls.apiclient,
-#             {"diskname":"StorPoolDisk-2" },
-#             zoneid=cls.zone.id,
-#             diskofferingid=disk_offerings[0].id,
-#         )
-#  
+
         cls.volume = Volume.create(
             cls.apiclient,
             {"diskname":"StorPoolDisk-3" },
@@ -189,7 +183,7 @@ class TestStoragePool(cloudstackTestCase):
  
         cls.virtual_machine = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -199,7 +193,7 @@ class TestStoragePool(cloudstackTestCase):
         )
         cls.virtual_machine2 = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -209,7 +203,7 @@ class TestStoragePool(cloudstackTestCase):
         )
         cls.virtual_machine3 = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -284,11 +278,13 @@ class TestStoragePool(cloudstackTestCase):
         print(list_vm_volumes)
         self.assertEqual(volume.id, list_vm_volumes[0].id, "Is true")
 
-        time.sleep(40)
+        self.virtual_machine.stop(self.apiclient, forced = True)
         volume = self.virtual_machine.detach_volume(
             self.apiclient,
             self.volume_1
             )
+
+        self.start(self.virtual_machine.id, self.host_remote[0].id)
         list_vm_volumes = Volume.list(
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
@@ -467,7 +463,7 @@ class TestStoragePool(cloudstackTestCase):
             )
         
         virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -477,7 +473,7 @@ class TestStoragePool(cloudstackTestCase):
 
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
-        ssh_client = virtual_machine.get_ssh_client()
+        ssh_client = virtual_machine.get_ssh_client(reconnect=True)
 
         self._cleanup.append(snapshot)
         self._cleanup.append(template)
@@ -517,7 +513,7 @@ class TestStoragePool(cloudstackTestCase):
             )
 
         virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -525,7 +521,7 @@ class TestStoragePool(cloudstackTestCase):
             rootdisksize=10
             )
 
-        ssh_client = virtual_machine.get_ssh_client()
+        ssh_client = virtual_machine.get_ssh_client(reconnect=True)
 
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
@@ -544,16 +540,16 @@ class TestStoragePool(cloudstackTestCase):
             type = "ROOT"
             )
 
-        self.virtual_machine.stop(self.apiclient)
-        
+        self.virtual_machine.stop(self.apiclient, forced = True)
+
         template = self.create_template_from_snapshot(
             self.apiclient,
             self.services,
             volumeid = volume[0].id
             )
-        
+
         virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -561,7 +557,7 @@ class TestStoragePool(cloudstackTestCase):
             rootdisksize=10
             )
 
-        ssh_client = virtual_machine.get_ssh_client()
+        ssh_client = virtual_machine.get_ssh_client(reconnect=True)
 
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
@@ -581,7 +577,7 @@ class TestStoragePool(cloudstackTestCase):
         self.assertEqual(volume_attached.id, self.volume.id, "Is not the same volume ")
         try:
             # Login to VM and write data to file system
-            ssh_client = self.virtual_machine3.get_ssh_client()
+            ssh_client = self.virtual_machine3.get_ssh_client(reconnect=True)
 
             cmds = [
                 "echo %s > %s/%s" %
@@ -632,7 +628,7 @@ class TestStoragePool(cloudstackTestCase):
         """
 
         try:
-            ssh_client = self.virtual_machine3.get_ssh_client()
+            ssh_client = self.virtual_machine3.get_ssh_client(reconnect=True)
 
             cmds = [
                 "rm -rf %s/%s" % (self.test_dir, self.random_data),

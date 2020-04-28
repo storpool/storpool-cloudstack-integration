@@ -47,6 +47,7 @@ from marvin.cloudstackAPI import (listOsTypes,
                                   listHosts,
                                   createTemplate,
                                   createVolume,
+                                  getVolumeSnapshotDetails,
                                   resizeVolume)
 import time
 import pprint
@@ -54,6 +55,8 @@ import random
 import subprocess
 from storpool import spapi
 from marvin.configGenerator import configuration
+import uuid
+from __builtin__ import False
 
 class TestStoragePool(cloudstackTestCase):
 
@@ -217,7 +220,7 @@ class TestStoragePool(cloudstackTestCase):
 
         cls.virtual_machine = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -228,7 +231,7 @@ class TestStoragePool(cloudstackTestCase):
 
         cls.virtual_machine2 = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-Resize-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -239,7 +242,7 @@ class TestStoragePool(cloudstackTestCase):
 
         cls.vm_migrate = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-Migrate-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -250,7 +253,7 @@ class TestStoragePool(cloudstackTestCase):
 
         cls.vm_cluster = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-Cluster-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -341,7 +344,7 @@ class TestStoragePool(cloudstackTestCase):
             snapshotid = snapshot.id
             )
         virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -367,10 +370,11 @@ class TestStoragePool(cloudstackTestCase):
                         type = "ROOT"
                         )
         try:
-            sp_volume = self.spapi.volumeList(volumeName = volume[0].id)
+            name = volume[0].path.split("/")[3]
+            sp_volume = self.spapi.volumeList(volumeName = "~" + name)
             self.debug('################ %s' % sp_volume)
         except spapi.ApiError as err:
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+            raise Exception(err)
 
         backup_config = list_configurations(
             self.apiclient,
@@ -385,10 +389,20 @@ class TestStoragePool(cloudstackTestCase):
             volume_id = volume[0].id
             )
         try:
-            sp_snapshot = self.spapi.snapshotList(snapshotName = snapshot.id)
-            self.debug('################ %s' % sp_snapshot)
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                    flag = True
+                    self.debug('################ %s' % sp_snapshot)
+            if flag == False:
+                raise Exception("Could not find snasphot in snapshot_details")
         except spapi.ApiError as err:
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+               raise Exception(err)
 
         self.assertIsNotNone(snapshot, "Could not create snapshot")
         self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
@@ -399,14 +413,22 @@ class TestStoragePool(cloudstackTestCase):
             snapshotid = snapshot.id
             )
 
-        try:
-            sp_template = self.spapi.snapshotList(snapshotName = template.id)
-            self.debug('################ %s' % sp_template)
+        flag = False
+        sp_snapshots = self.spapi.snapshotsList()
+        for snap in sp_snapshots:
+            tags = snap.tags
+            for t in tags:
+                if tags[t] == template.id:
+                    flag = True
+                    break
+            else:
+                continue
+            break
 
-        except spapi.ApiError as err:
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+        if flag is False:
+            raise Exception("Template does not exists in Storpool")
         virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -441,6 +463,21 @@ class TestStoragePool(cloudstackTestCase):
            self.apiclient,
             volume_id = volume[0].id
             )
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                    flag = True
+                    self.debug('################ %s' % sp_snapshot)
+            if flag == False:
+                raise Exception("Could not find snapshot in snapshot_details")
+        except spapi.ApiError as err:
+            raise Exception(err)
         self.assertIsNotNone(snapshot, "Could not create snapshot")
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -464,6 +501,21 @@ class TestStoragePool(cloudstackTestCase):
            self.apiclient,
             volume_id = volume[0].id
             )
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                    flag = True
+                    self.debug('################ %s' % sp_snapshot)
+            if flag == False:
+                raise Exception("Could not find snapshot in snapshot details")
+        except spapi.ApiError as err:
+            raise Exception(err)
         self.assertIsNotNone(snapshot, "Could not create snapshot")
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -476,10 +528,11 @@ class TestStoragePool(cloudstackTestCase):
                         type = "ROOT"
                         )
         try:
-            sp_volume = self.spapi.volumeList(volumeName = volume[0].id)
+            name = volume[0].path.split("/")[3]
+            sp_volume = self.spapi.volumeList(volumeName = "~" + name)
             self.debug('################ %s' % sp_volume)
         except spapi.ApiError as err:
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+            raise Exception(err)
 
         backup_config = list_configurations(
             self.apiclient,
@@ -494,10 +547,20 @@ class TestStoragePool(cloudstackTestCase):
             volume_id = volume[0].id
             )
         try:
-            sp_snapshot = self.spapi.snapshotList(snapshotName = snapshot.id)
-            self.debug('################ %s' % sp_snapshot)
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                    flag = True
+                    self.debug('################ %s' % sp_snapshot)
+            if flag == False:
+                raise Exception("Could not find snapshot in snapshot details")
         except spapi.ApiError as err:
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+            raise Exception(err)
 
         self.assertIsNotNone(snapshot, "Could not create snapshot")
         self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
@@ -508,25 +571,34 @@ class TestStoragePool(cloudstackTestCase):
             snapshotid = snapshot.id
             )
 
-        try:
-            sp_template = self.spapi.snapshotList(snapshotName = template.id)
-            self.debug('################ %s' % sp_template)
+        flag = False
+        storpoolGlId = None
+        sp_snapshots = self.spapi.snapshotsList()
+        for snap in sp_snapshots:
+            tags = snap.tags
+            for t in tags:
+                if tags[t] == template.id:
+                    storpoolGlId = snap.globalId
+                    flag = True
+                    break
+            else:
+                continue
+            break
 
-        except spapi.ApiError as err:
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
-
+        if flag is False:
+            raise Exception("Template does not exists in Storpool")
 
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
         temp = Template.delete(template, self.apiclient, self.zone.id)
         self.assertIsNone(temp, "Template was not deleted")
-        try:
-            sp_template = self.spapi.snapshotList(snapshotName = template.id)
-            self.debug('################ %s' % sp_template)
 
+        try:
+            sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + storpoolGlId)
+            if sp_snapshot is not None:
+                raise Exception(err)
         except spapi.ApiError as err:
-            self.debug('################ snapshot template does not exists %s' % err.name)
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+                self.debug("Do nothing the template has to be deleted")
         self._cleanup.append(snapshot)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -540,10 +612,11 @@ class TestStoragePool(cloudstackTestCase):
                         type = "ROOT"
                         )
         try:
-            sp_volume = self.spapi.volumeList(volumeName = volume[0].id)
+            name = volume[0].path.split("/")[3]
+            sp_volume = self.spapi.volumeList(volumeName = "~" + name)
             self.debug('################ %s' % sp_volume)
         except spapi.ApiError as err:
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+            raise Exception(err)
 
         backup_config = list_configurations(
             self.apiclient,
@@ -558,10 +631,20 @@ class TestStoragePool(cloudstackTestCase):
             volume_id = volume[0].id
             )
         try:
-            sp_snapshot = self.spapi.snapshotList(snapshotName = snapshot.id)
-            self.debug('################ %s' % sp_snapshot)
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                    flag = True
+                    self.debug('################ %s' % sp_snapshot)
+            if flag == False:
+                raise Exception("Could not find snapshot in snapsho details")
         except spapi.ApiError as err:
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+           raise Exception(err)
 
         self.assertIsNotNone(snapshot, "Could not create snapshot")
         self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
@@ -580,29 +663,239 @@ class TestStoragePool(cloudstackTestCase):
             snapshotid = snapshot.id
             )
 
-        try:
-            sp_template = self.spapi.snapshotList(snapshotName = template.id)
-            self.debug('################ %s' % sp_template)
+        flag = False
+        globalId = None
+        sp_snapshots = self.spapi.snapshotsList()
+        for snap in sp_snapshots:
+            tags = snap.tags
+            for t in tags:
+                if tags[t] == template.id:
+                    flag = True
+                    globalId = snap.globalId
+                    break
+            else:
+                continue
+            break
 
-        except spapi.ApiError as err:
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+        if flag is False:
+            raise Exception("Template does not exists in Storpool")
 
 
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
         temp = Template.delete(template, self.apiclient, self.zone.id)
         self.assertIsNone(temp, "Template was not deleted")
-        try:
-            sp_template = self.spapi.snapshotList(snapshotName = template.id)
-            self.debug('################ %s' % sp_template)
 
-        except spapi.ApiError as err:
-            self.debug('################ snapshot template does not exists %s' % err.name)
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+        if globalId is not None:
+            try:
+                sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + globalId)
+                if sp_snapshot is not None:
+                    raise Exception(err)
+            except spapi.ApiError as err:
+                self.debug("Do nothing the template has to be deleted")
+        else:
+            flag = False
+            sp_snapshots = self.spapi.snapshotsList()
+            for snap in sp_snapshots:
+                tags = snap.tags
+                for t in tags:
+                    if tags[t] == template.id:
+                        flag = True
+                        break
+                else:
+                    continue
+                break
+
+            if flag is True:
+                raise Exception("Template should not exists in Storpool")
         self._cleanup.append(snapshot)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-    def test_07_vm_from_bypassed_template(self):
+    def test_07_delete_snapshot_of_deleted_volume(self):
+        ''' Delete snapshot and template if volume is already deleted, not bypassing secondary
+        '''
+
+        backup_config = list_configurations(
+            self.apiclient,
+            name = "sp.bypass.secondary.storage")
+        if (backup_config[0].value == "true"):
+            backup_config = Configurations.update(self.apiclient,
+            name = "sp.bypass.secondary.storage",
+            value = "false")
+
+        volume = Volume.create(
+            self.apiclient,
+            {"diskname":"StorPoolDisk-Delete" },
+            zoneid = self.zone.id,
+            diskofferingid = self.disk_offerings.id
+            )
+        delete = volume
+        self.virtual_machine2.attach_volume(
+            self.apiclient,
+            volume
+            )
+        self.virtual_machine2.detach_volume(
+            self.apiclient,
+            volume
+            )
+
+        volume = list_volumes(self.apiclient, id = volume.id)
+
+        name = volume[0].path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+        except spapi.ApiError as err:
+           raise Exception(err)
+
+        snapshot = Snapshot.create(
+            self.apiclient,
+             volume_id = volume[0].id
+            )
+
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    try:
+                        sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                        self.debug('################ %s' % sp_snapshot)
+                        flag = True
+                    except spapi.ApiError as err:
+                       raise Exception(err)
+            if flag == False:
+                raise Exception("Could not finad snapshot in snapshot details")
+        except Exception as err:
+            raise Exception(err)
+
+        template = self.create_template_from_snapshot(self.apiclient, self.services, snapshotid = snapshot.id)
+
+        template_from_volume = self.create_template_from_snapshot(self.apiclient, self.services, volumeid = volume[0].id)
+
+        Volume.delete(delete, self.apiclient, )
+        Snapshot.delete(snapshot, self.apiclient)
+
+        flag = False
+
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            if snapshot_details is not None:
+                try:
+                    for s in snapshot_details:
+                        if s["snapshotDetailsName"] == snapshot.id:
+                            name = s["snapshotDetailsValue"].split("/")[3]
+                            sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                            self.debug('################ The snapshot had to be deleted %s' % sp_snapshot)
+                            flag = True
+                except spapi.ApiError as err:
+                    flag = False
+    
+            if flag is True:
+                raise Exception("Snapshot was not deleted")
+        except Exception as err:
+            self.debug('Snapshot was deleted %s' % err)
+
+        Template.delete(template, self.apiclient, zoneid = self.zone.id)
+        Template.delete(template_from_volume, self.apiclient, zoneid = self.zone.id)
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_08_delete_snapshot_of_deleted_volume(self):
+        ''' Delete snapshot and template if volume is already deleted, bypassing secondary
+        '''
+
+        backup_config = list_configurations(
+            self.apiclient,
+            name = "sp.bypass.secondary.storage")
+        if (backup_config[0].value == "false"):
+            backup_config = Configurations.update(self.apiclient,
+            name = "sp.bypass.secondary.storage",
+            value = "true")
+
+        volume = Volume.create(
+            self.apiclient,
+            {"diskname":"StorPoolDisk-Delete" },
+            zoneid = self.zone.id,
+            diskofferingid = self.disk_offerings.id
+            )
+        delete = volume
+        self.virtual_machine2.attach_volume(
+            self.apiclient,
+            volume
+            )
+        self.virtual_machine2.detach_volume(
+            self.apiclient,
+            volume
+            )
+
+        volume = list_volumes(self.apiclient, id = volume.id)
+
+        name = volume[0].path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+        except spapi.ApiError as err:
+           raise Exception(err)
+
+        snapshot = Snapshot.create(
+            self.apiclient,
+             volume_id = volume[0].id
+            )
+
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            if snapshot_details is not None:
+                flag = False
+                for s in snapshot_details:
+                    if s["snapshotDetailsName"] == snapshot.id:
+                        name = s["snapshotDetailsValue"].split("/")[3]
+                        try:
+                            sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                            self.debug('################ %s' % sp_snapshot)
+                            flag = True
+                        except spapi.ApiError as err:
+                           raise Exception(err)
+                if flag == False:
+                    raise Exception("Could not find snapshot in snapshot details")
+        except Exception as err:
+            raise Exception(err)  
+
+        template = self.create_template_from_snapshot(self.apiclient, self.services, snapshotid = snapshot.id)
+
+        Volume.delete(delete, self.apiclient, )
+        Snapshot.delete(snapshot, self.apiclient)
+
+        flag = False
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            if snapshot_details is not None:
+                try:
+                    for s in snapshot_details:
+                        if s["snapshotDetailsName"] == snapshot.id:
+                            name = s["snapshotDetailsValue"].split("/")[3]
+                            sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                            self.debug('################ The snapshot had to be deleted %s' % sp_snapshot)
+                            flag = True
+                except spapi.ApiError as err:
+                    flag = False
+    
+            if flag is True:
+                raise Exception("Snapshot was not deleted")
+        except Exception as err:
+            self.debug('Snapshot was deleted %s' % err)
+            
+
+        Template.delete(template, self.apiclient, zoneid = self.zone.id)
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_09_vm_from_bypassed_template(self):
         '''Create virtual machine with sp.bypass.secondary.storage=false
         from template created on StorPool and Secondary Storage'''
 
@@ -611,11 +904,12 @@ class TestStoragePool(cloudstackTestCase):
                         virtualmachineid = self.virtual_machine.id,
                         type = "ROOT"
                         )
+
+        name = volume[0].path.split("/")[3]
         try:
-            sp_volume = self.spapi.volumeList(volumeName = volume[0].id)
-            self.debug('################ %s' % sp_volume)
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
         except spapi.ApiError as err:
-            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+           raise Exception(err)
 
         backup_config = list_configurations(
             self.apiclient,
@@ -629,11 +923,25 @@ class TestStoragePool(cloudstackTestCase):
            self.apiclient,
             volume_id = volume[0].id
             )
+
         try:
-            sp_snapshot = self.spapi.snapshotList(snapshotName = snapshot.id)
-            self.debug('################ %s' % sp_snapshot)
-        except spapi.ApiError as err:
-            raise Exception(err.name, "objectDoesNotExist", "Error")
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    try:
+                        sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                        self.debug('################ %s' % sp_snapshot)
+                        flag = True
+                    except spapi.ApiError as err:
+                       raise Exception(err)
+            if flag == False:
+                raise Exception("Could not find snapshot in snapshot details")
+        except Exception as err:
+            raise Exception(err)
 
         self.assertIsNotNone(snapshot, "Could not create snapshot")
         self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
@@ -644,15 +952,24 @@ class TestStoragePool(cloudstackTestCase):
             snapshotid = snapshot.id
             )
 
-        try:
-            sp_template = self.spapi.snapshotList(snapshotName = template.id)
-            self.debug('################ %s' % sp_template)
+        flag = False
+        sp_snapshots = self.spapi.snapshotsList()
+        for snap in sp_snapshots:
+            tags = snap.tags
+            for t in tags:
+                if tags[t] == template.id:
+                    flag = True
+                    break
+            else:
+                continue
+            break
 
-        except spapi.ApiError as err:
-            raise Exception(err.name, "objectDoesNotExist", "Error")
+        if flag is False:
+            raise Exception("Template does not exists in Storpool")
+
 
         self.assertIsNotNone(template, "Template is None")
-        self.assertIsInstance(template, Template, "Template is instance of template")   
+        self.assertIsInstance(template, Template, "Template is instance of template")
 
         backup_config = list_configurations(
             self.apiclient,
@@ -664,7 +981,7 @@ class TestStoragePool(cloudstackTestCase):
 
         vm = VirtualMachine.create(
             self.apiclient,
-            {"name":"StorPool-Templ-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid = template.id,
             serviceofferingid=self.service_offering.id,

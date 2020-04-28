@@ -251,7 +251,7 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
             log.info(String.format("Volume id=%s, name=%s, instanceId=%s, path=%s", volume.getId(), volume.getName(),
                     volume.getInstanceId(), volume.getPath()));
             SpConnectionDesc conn = new SpConnectionDesc(volumeObjectTO.getDataStore().getUuid());
-            String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volume.getPath());
+            String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volume.getPath(), true);
             if (name != null) {
                 boolean isStorPoolVolume = StorpoolUtil.volumeExists(name, conn);
                 if (isStorPoolVolume) {

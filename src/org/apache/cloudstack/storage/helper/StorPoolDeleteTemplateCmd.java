@@ -26,11 +26,16 @@ import org.apache.cloudstack.api.command.user.template.DeleteTemplateCmd;
 import org.apache.cloudstack.api.response.SuccessResponse;
 import org.apache.cloudstack.engine.subsystem.api.storage.TemplateDataFactory;
 import org.apache.cloudstack.engine.subsystem.api.storage.TemplateInfo;
+import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
 import org.apache.log4j.Logger;
 
+import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
+import com.cloud.storage.VMTemplateDetailVO;
+import com.cloud.storage.dao.VMTemplateDetailsDao;
 import com.cloud.utils.component.ComponentContext;
 
 @APICommand(name = "deleteTemplate",
@@ -43,6 +48,10 @@ public class StorPoolDeleteTemplateCmd extends BaseAsyncCmd {
     private StorPoolReplaceCommandsHelper.StorPoolReplaceCommandsUtil replaceCommands = StorPoolReplaceCommandsHelper.getStorPoolReplaceCommandsUtil();
     @Inject
     private TemplateDataFactory templateDataFactory;
+    @Inject
+    private TemplateDataStoreDao templateDataStoreDao;
+    @Inject
+    private VMTemplateDetailsDao vmTemplateDetailDao;
 
     public StorPoolDeleteTemplateCmd() {
         super();
@@ -88,14 +97,19 @@ public class StorPoolDeleteTemplateCmd extends BaseAsyncCmd {
     public void execute() {
         replaceCommands.ensureCmdHasRequiredValues(this.deleteTemplate, this);
         TemplateInfo obj =  templateDataFactory.getReadyTemplateOnImageStore(this.deleteTemplate.getId(), this.deleteTemplate.getZoneId());
+        TemplateDataStoreVO template = templateDataStoreDao.findByTemplate(obj.getId(), obj.getDataStore().getRole());
         try {
             this.deleteTemplate.execute();
             log.info("DeleteTemplateCmd.execute was successfuly executed");
             this.setResponseObject(this.deleteTemplate.getResponseObject());
-            if (obj != null ) {
+            if (obj != null && template != null && template.getLocalDownloadPath() != null) {
                 SpConnectionDesc conn = new SpConnectionDesc(obj.getDataStore().getUuid());
-                if (StorpoolUtil.snapshotExists(obj.getUuid(), conn)) {
-                    SpApiResponse resp = StorpoolUtil.snapshotDelete(obj.getUuid(), conn);
+                if (StorpoolUtil.snapshotExists(StorpoolStorageAdaptor.getVolumeNameFromPath(template.getLocalDownloadPath(), true), conn)) {
+                    SpApiResponse resp = StorpoolUtil.snapshotDelete(StorpoolStorageAdaptor.getVolumeNameFromPath(template.getLocalDownloadPath(), true), conn);
+                    VMTemplateDetailVO detail = vmTemplateDetailDao.findDetail(template.getTemplateId(), StorpoolUtil.SP_STORAGE_POOL_ID);
+                    if (detail != null) {
+                        vmTemplateDetailDao.remove(detail.getId());
+                    }
                     StorpoolUtil.spLog("Delete template from StorPool. Snapshot name=%s, result=%s", obj.getUuid(), resp.getError());
                 }
             }

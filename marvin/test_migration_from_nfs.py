@@ -20,6 +20,7 @@ import pprint
 import random
 import subprocess
 import time
+import uuid
 
 from marvin.cloudstackAPI import (listOsTypes,
                                   listTemplates,
@@ -160,7 +161,7 @@ class TestStoragePool(cloudstackTestCase):
         cls.nfs_storage_pool = nfs_storage_pool[0]
         cls.nfs_storage_pool = StoragePool.cancelMaintenance(cls.apiclient, cls.nfs_storage_pool.id)
         cls.vm = VirtualMachine.create(cls.apiclient,
-            {"name":"StorPool-Migrate-VM-From-NFS-%d" % random.randint(0, 100) },
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=nfs_service_offering.id,
@@ -168,7 +169,7 @@ class TestStoragePool(cloudstackTestCase):
             rootdisksize=10
             )
         cls.vm2 = VirtualMachine.create(cls.apiclient,
-            {"name":"StorPool-Migrate-NFS-volume-%d" % random.randint(0, 100) },
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=nfs_service_offering.id,
@@ -246,6 +247,12 @@ class TestStoragePool(cloudstackTestCase):
             virtualmachineid = migrated_vm.id
             )
         for v in volumes:
+            name = v.path.split("/")[3]
+            try:
+                sp_volume = self.spapi.volumeList(volumeName="~" + name)
+            except spapi.ApiError as err:
+                raise Exception(err)
+
             self.assertEqual(v.storageid, self.storage_pool.id, "Did not migrate virtual machine from NFS to StorPool")
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -263,5 +270,14 @@ class TestStoragePool(cloudstackTestCase):
             cmd.volumeid = v.id
             volume =  self.apiclient.migrateVolume(cmd)
             self.assertEqual(volume.storageid, self.storage_pool.id, "Did not migrate volume from NFS to StorPool")
-        
-        
+
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.vm2.id
+            )
+        for v in volumes:
+            name = v.path.split("/")[3]
+            try:
+                sp_volume = self.spapi.volumeList(volumeName="~" + name)
+            except spapi.ApiError as err:
+                raise Exception(err)

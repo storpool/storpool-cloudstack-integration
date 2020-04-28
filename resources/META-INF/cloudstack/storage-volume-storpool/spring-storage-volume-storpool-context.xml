@@ -31,4 +31,6 @@
 		class="org.apache.cloudstack.storage.motion.StorPoolDataMotionStrategy" />
 	<bean id="storPoolReplaceCommandsHelper" primary="false"
 		class="org.apache.cloudstack.storage.helper.StorPoolReplaceCommandsHelper" init-method="init"/>
+      <bean id="updateToGlobalIds"
+         class="org.apache.cloudstack.storage.helper.StorPoolMigrationToGlobalId" />
 </beans>
