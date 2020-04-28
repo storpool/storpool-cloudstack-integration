@@ -125,17 +125,19 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
         return false;
     }
 
-    public static String getVolumeNameFromPath(final String volumeUuid) {
+    public static String getVolumeNameFromPath(final String volumeUuid, boolean tildeNeeded) {
         // maybe replace with regex match?
-        if (!volumeUuid.startsWith("/dev/storpool/")) {
-            return null;
+        if (volumeUuid.startsWith("/dev/storpool/")) {
+            return volumeUuid.split("/")[3];
+        }else if(volumeUuid.startsWith("/dev/storpool-byid/")) {
+            return  tildeNeeded ? "~" + volumeUuid.split("/")[3] : volumeUuid.split("/")[3];
         }
 
-        return volumeUuid.split("/")[3];
+        return null;
     }
 
     public static boolean attachOrDetachVolume(String command, String type, String volumeUuid) {
-        final String name = getVolumeNameFromPath(volumeUuid);
+        final String name = getVolumeNameFromPath(volumeUuid, true);
         if (name == null) {
             return false;
         }
@@ -192,7 +194,7 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
     }
 
     public static boolean resize(String newSize, String volumeUuid ) {
-        final String name = getVolumeNameFromPath(volumeUuid);
+        final String name = getVolumeNameFromPath(volumeUuid, true);
         if (name == null) {
             return false;
         }
@@ -279,7 +281,7 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
     public boolean deletePhysicalDisk(String volumeUuid, KVMStoragePool pool, Storage.ImageFormat format) {
         // Should only come here when cleaning-up StorPool snapshots associated with CloudStack templates.
         SP_LOG("StorpooolStorageAdaptor.deletePhysicalDisk: uuid=%s, pool=%s, format=%s", volumeUuid, pool, format);
-        final String name = getVolumeNameFromPath(volumeUuid);
+        final String name = getVolumeNameFromPath(volumeUuid, true);
         if (name == null) {
             final String err = String.format("StorpooolStorageAdaptor.deletePhysicalDisk: '%s' is not a StorPool volume?", volumeUuid);
             SP_LOG(err);

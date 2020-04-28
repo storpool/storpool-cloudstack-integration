@@ -52,6 +52,7 @@ import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.script.OutputInterpreter;
 import com.cloud.utils.script.Script;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -118,8 +119,12 @@ public class StorpoolUtil {
 
 
     public static final String SP_PROVIDER_NAME = "StorPool";
-    public static final String SP_DEV_PATH = "/dev/storpool/";
+    public static final String SP_DEV_PATH = "/dev/storpool-byid/";
+    public static final String SP_OLD_PATH = "/dev/storpool/";
     public static final String SP_VC_POLICY = "vc_policy";
+    public static final String GLOBAL_ID = "snapshotGlobalId";
+    public static final String UPDATED_DETAIL = "renamed";
+    public static final String SP_STORAGE_POOL_ID = "spStoragePoolId";
 
     public static enum StorpoolRights {
         RO("ro"),
@@ -378,6 +383,20 @@ public class StorpoolUtil {
         return resp.getError() == null;
     }
 
+    public static JsonArray snapshotsList(SpConnectionDesc conn) {
+        SpApiResponse resp = GET("MultiCluster/SnapshotsList", conn);
+        JsonObject obj = resp.fullJson.getAsJsonObject();
+        JsonArray data = obj.getAsJsonArray("data");
+        return data;
+    }
+
+    public static JsonArray volumesList(SpConnectionDesc conn) {
+        SpApiResponse resp = GET("MultiCluster/VolumesList", conn);
+        JsonObject obj = resp.fullJson.getAsJsonObject();
+        JsonArray data = obj.getAsJsonArray("data");
+        return data;
+    }
+
     public static long snapshotSize(final String name, SpConnectionDesc conn) {
         SpApiResponse resp = GET("MultiCluster/Snapshot/" + name, conn);
         JsonObject obj = resp.fullJson.getAsJsonObject();
@@ -397,7 +416,10 @@ public class StorpoolUtil {
 
     public static SpApiResponse volumeCreate(final String name, final String parentName, final Long size, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
-        json.put("name", name);
+        Map<String, String> tags = new HashMap<>();
+        tags.put("uuid", name != null ? name : "");
+        json.put("tags", tags);
+        json.put("name", "");
         json.put("parent", parentName);
         json.put("template", conn.getTemplateName());
         json.put("size", size);
@@ -406,11 +428,12 @@ public class StorpoolUtil {
 
     public static SpApiResponse volumeCreateWithTags(final String name, final String parentName, final Long size, String uuid, String vcPolicy, SpConnectionDesc conn) {
         Map<String, Object> json = new LinkedHashMap<>();
-        json.put("name", name);
+        json.put("name", "");
         json.put("parent", parentName);
         json.put("size", size);
         json.put("template", conn.getTemplateName());
         Map<String, String> tags = new HashMap<>();
+        tags.put("uuid", name != null ? name : "");
         tags.put("cvm", uuid != null ? uuid : "");
         tags.put(SP_VC_POLICY, vcPolicy != null ? vcPolicy : "");
         json.put("tags", tags);
@@ -420,8 +443,20 @@ public class StorpoolUtil {
     public static SpApiResponse volumeCopy(final String name, final String baseOn, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
         json.put("baseOn", baseOn);
-        json.put("name", name);
+        Map<String, String> tags = new HashMap<>();
+        tags.put("uuid", name != null ? name : "");
+        json.put("tags", tags);
         return POST("MultiCluster/VolumeCreate", json, conn);
+    }
+
+    public static SpApiResponse volumeUpdateRename(final String name, String newName, String uuid, SpConnectionDesc conn) {
+        Map<String, Object> json = new HashMap<>();
+        json.put("rename", newName);
+        Map<String, String> tags = new HashMap<>();
+        tags.put("uuid", uuid);
+        json.put("tags", tags);
+
+        return POST("MultiCluster/VolumeUpdate/" + name, json, conn);
     }
 
     public static SpApiResponse volumeUpdate(final String name, final Long newSize, final Boolean shrinkOk, SpConnectionDesc conn) {
@@ -449,9 +484,13 @@ public class StorpoolUtil {
         return POST("MultiCluster/SnapshotUpdate/" + name, json , conn);
    }
 
-    public static SpApiResponse volumeSnapshot(final String volumeName, final String snapshotName, SpConnectionDesc conn) {
+    public static SpApiResponse volumeSnapshot(final String volumeName, final String snapshotName, String vmid, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
-        json.put("name", snapshotName);
+        Map<String, String> tags = new HashMap<>();
+        json.put("name", "");
+        tags.put("uuid", snapshotName);
+        tags.put("cvm", vmid);
+        json.put("tags", tags);
 
         return POST("MultiCluster/VolumeSnapshot/" + volumeName, json , conn);
     }
@@ -462,12 +501,12 @@ public class StorpoolUtil {
          List<Map<String, Object>> volumes = new ArrayList<>();
          for (VolumeObjectTO volumeTO : volumeTOs) {
               Map<String, Object> vol = new LinkedHashMap<>();
-              String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volumeTO.getPath());
-              String snapName = snapshotName +"_" +name;
-              vol.put("name", snapName);
+              String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volumeTO.getPath(), true);
+              vol.put("name", "");
               vol.put("volume", name);
               volumes.add(vol);
          }
+         tags.put("uuid", snapshotName);
          tags.put("cvm", uuid);
          json.put("tags", tags);
          json.put("volumes", volumes);
@@ -492,8 +531,8 @@ public class StorpoolUtil {
     }
 
     public static SpApiResponse snapshotDelete(final String name, SpConnectionDesc conn) {
-        detachAllForced(name, true, conn);
-        return POST("MultiCluster/SnapshotDelete/" + name, null, conn);
+        SpApiResponse resp = detachAllForced(name, true, conn);
+        return resp.getError() == null ? POST("MultiCluster/SnapshotDelete/" + name, null, conn) : resp;
     }
 
 /*
@@ -512,7 +551,7 @@ public class StorpoolUtil {
         return POST("VolumesReassign", json);
     }
 */
-    private static void detachAllForced(final String name, final boolean snapshot, SpConnectionDesc conn) {
+    private static SpApiResponse detachAllForced(final String name, final boolean snapshot, SpConnectionDesc conn) {
         final String type = snapshot ? "snapshot" : "volume";
         List<Map<String, Object>> json = new ArrayList<>();
         Map<String, Object> reassignDesc = new HashMap<>();
@@ -521,11 +560,22 @@ public class StorpoolUtil {
         reassignDesc.put("force", true);
         json.add(reassignDesc);
 
-        final SpApiResponse resp = POST("MultiCluster/VolumesReassign", json, conn);
-        if (resp.getError() != null) {
-            final String err = String.format("Force detach failed for %s %s. Error: %s", type, name, resp.getError());
-            spLog(err);
-//            throw new CloudRuntimeException(err);
-        }
+        return POST("MultiCluster/VolumesReassign", json, conn);
+    }
+
+    public static String getSnapshotNameFromResponse(SpApiResponse resp, boolean tildeNeeded, String globalIdOrRemote) {
+        JsonObject obj = resp.fullJson.getAsJsonObject();
+        JsonPrimitive data = obj.getAsJsonObject("data").getAsJsonPrimitive(globalIdOrRemote);
+        String name = data !=null ? data.getAsString() : null;
+        name = name != null ? !tildeNeeded ? name : "~" + name : name;
+        return name;
+    }
+
+    public static String getNameFromResponse(SpApiResponse resp, boolean tildeNeeded) {
+        JsonObject obj = resp.fullJson.getAsJsonObject();
+        JsonPrimitive data = obj.getAsJsonObject("data").getAsJsonPrimitive("name");
+        String name = data !=null ? data.getAsString() : null;
+        name = name != null ? name.startsWith("~") && !tildeNeeded ? name.split("~")[1] : name : name;
+        return name;
     }
 }

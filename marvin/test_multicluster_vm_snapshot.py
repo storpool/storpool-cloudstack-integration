@@ -16,7 +16,6 @@
 # under the License.
 
 # Import Local Modules
-from _ast import If
 import random
 import time
 
@@ -44,7 +43,7 @@ from marvin.lib.common import (get_zone,
                                )
 from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_snapshot_on_nfs, isAlmostEqual, get_hypervisor_type
 from nose.plugins.attrib import attr
-from sepolicy.templates.etc_rw import if_admin_rules
+import uuid
 
 
 class TestData():
@@ -231,7 +230,7 @@ class TestVmSnapshot(cloudstackTestCase):
 
         cls.virtual_machine = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=cls.template.id,
             serviceofferingid=cls.service_offering_only.id,

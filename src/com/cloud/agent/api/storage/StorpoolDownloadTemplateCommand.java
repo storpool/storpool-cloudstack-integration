@@ -19,12 +19,19 @@
 
 package com.cloud.agent.api.storage;
 
-import org.apache.cloudstack.storage.to.TemplateObjectTO;
-
 import com.cloud.agent.api.to.DataTO;
 
-public class StorpoolDownloadTemplateCommand extends StorpoolCopyCommand<TemplateObjectTO, TemplateObjectTO> {
-    public StorpoolDownloadTemplateCommand(final DataTO srcTO, final DataTO dstTO, final int timeout, final boolean executeInSequence) {
+public class StorpoolDownloadTemplateCommand extends StorpoolCopyCommand<DataTO, DataTO> {
+    protected String objectType;
+    public StorpoolDownloadTemplateCommand(final DataTO srcTO, final DataTO dstTO, final int timeout, final boolean executeInSequence, String objectType) {
         super(srcTO, dstTO, timeout, executeInSequence);
+        this.objectType = objectType;
+    }
+
+    public String getObjectType() {
+        return objectType;
+    }
+    public void setObjectType(String objectType) {
+        this.objectType = objectType;
     }
 }

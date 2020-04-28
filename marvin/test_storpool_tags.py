@@ -58,7 +58,7 @@ from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_sna
 from nose.plugins.attrib import attr
 
 from storpool import spapi
-from _ast import If
+import uuid
 
 
 class TestStoragePool(cloudstackTestCase):
@@ -172,7 +172,7 @@ class TestStoragePool(cloudstackTestCase):
         )
         cls.virtual_machine = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -181,7 +181,7 @@ class TestStoragePool(cloudstackTestCase):
         )
         cls.virtual_machine2= VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -253,11 +253,14 @@ class TestStoragePool(cloudstackTestCase):
                 self.apiclient,
                 self.volume_2
                 )
+        volume = list_volumes(self.apiclient, id = volume_attached.id)
+        name = volume[0].path.split("/")[3]
+        sp_volume = self.spapi.volumeList(volumeName="~" + name)
+
         vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
         vm_tags = vm[0].tags
         self.debug('######################### test_02_set_vcpolicy_tag_to_attached_disk tags ######################### ')
         for vm_tag in vm_tags:
-            sp_volume = self.spapi.volumeList(volumeName=volume_attached.id)
             for sp_tag in sp_volume[0].tags:
                 if sp_tag == vm_tag.key:
                     self.debug("######################### StorPool tag %s , VM tag %s ######################### " % (sp_tag, vm_tag.key))
@@ -491,14 +494,15 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
             )
-        self.debug('######################### test_07_delete_vcpolicy_tag  #########################')        
+        self.debug('######################### test_07_delete_vcpolicy_tag  #########################')
         for v in volumes:
-            spvolume = self.spapi.volumeList(volumeName=v.id)
+            name = v.path.split("/")[3]
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
             tags = spvolume[0].tags
             for t in tags:
                 self.debug("######################### Storpool tag key:%s, value:%s ######################### " % (t, tags[t]))
                 self.assertFalse(t.lower() == 'vc_policy'.lower(), "There is VC Policy tag")
-  
+
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_08_vcpolicy_tag_to_reverted_disk(self):
         tag = Tag.create(
@@ -531,19 +535,21 @@ class TestStoragePool(cloudstackTestCase):
         cmd = revertSnapshot.revertSnapshotCmd()
         cmd.id = snapshot.id
         revertedn = self.apiclient.revertSnapshot(cmd)
- 
+
         vm = list_virtual_machines(self.apiclient,id = self.virtual_machine2.id)
         vm_tags = vm[0].tags
         self.debug('######################### test_08_vcpolicy_tag_to_reverted_disk tags after revert #########################')
 
-        self.vc_policy_tags(volume, vm_tags, vm)
+        vol = list_volumes(self.apiclient, id = snapshot.volumeid)
+        self.vc_policy_tags(vol, vm_tags, vm)
         self._cleanup.append(snapshot)
 
 
     def vc_policy_tags(self, volumes, vm_tags, vm):
         flag = False
         for v in volumes:
-            spvolume = self.spapi.volumeList(volumeName=v.id)
+            name = v.path.split("/")[3]
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
             tags = spvolume[0].tags
             for t in tags:
                 for vm_tag in vm_tags:

@@ -47,13 +47,16 @@ from marvin.cloudstackAPI import (listOsTypes,
                                   listHosts,
                                   createTemplate,
                                   createVolume,
-                                  resizeVolume)
+                                  resizeVolume,
+                                  getVolumeSnapshotDetails)
 import time
 import pprint
 import random
 import subprocess
 from storpool import spapi
 from marvin.configGenerator import configuration
+import uuid
+from __builtin__ import True
 
 class TestStoragePool(cloudstackTestCase):
 
@@ -217,7 +220,7 @@ class TestStoragePool(cloudstackTestCase):
 
         cls.virtual_machine = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -228,7 +231,7 @@ class TestStoragePool(cloudstackTestCase):
 
         cls.virtual_machine2 = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-Resize-%d" % random.randint(0, 100)},
+           {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -239,7 +242,7 @@ class TestStoragePool(cloudstackTestCase):
 
         cls.vm_migrate = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-Migrate-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -250,7 +253,7 @@ class TestStoragePool(cloudstackTestCase):
 
         cls.vm_cluster = VirtualMachine.create(
             cls.apiclient,
-            {"name":"StorPool-Cluster-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -276,6 +279,14 @@ class TestStoragePool(cloudstackTestCase):
     @classmethod
     def tearDownClass(cls):
         try:
+            clusters = Cluster.list(cls.apiclient, allocationstate = "Disabled")
+            if clusters is not None:
+                for c in clusters:
+                    cluster = Cluster.update(
+                    cls.apiclient,
+                    id = c.id,
+                    allocationstate = "Enabled"
+                    )
             # Cleanup resources used
             cleanup_resources(cls.apiclient, cls._cleanup)
         except Exception as e:
@@ -328,6 +339,12 @@ class TestStoragePool(cloudstackTestCase):
         print(list_vm_volumes)
         self.assertEqual(volume.id, list_vm_volumes[0].id, "Is true")
 
+        name = list_vm_volumes[0].path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         volume = self.virtual_machine.detach_volume(
             self.apiclient,
             self.volume_1
@@ -337,6 +354,7 @@ class TestStoragePool(cloudstackTestCase):
             virtualmachineid = self.virtual_machine.id,
             id = volume.id
             )
+
         print(list_vm_volumes)
         self.assertIsNone(list_vm_volumes, "Is None")
 
@@ -351,6 +369,15 @@ class TestStoragePool(cloudstackTestCase):
             type = "ROOT"
             )
         volume = volume[0]
+
+        name = volume.path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != volume.size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         self.assertEqual(volume.type, 'ROOT', "Volume is not of ROOT type")
         shrinkOk = False
         if volume.size > int((self.disk_offering_20.disksize) * (1024**3)):
@@ -373,6 +400,15 @@ class TestStoragePool(cloudstackTestCase):
             "New size is not int((self.disk_offering_20) * (1024**3)"
             )
         volume = new_size[0]
+
+        name = volume.path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != volume.size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         shrinkOk = False
         if volume.size > int((self.disk_offering_100.disksize) * (1024**3)):
             shrinkOk= True
@@ -388,6 +424,16 @@ class TestStoragePool(cloudstackTestCase):
             id=volume.id
             )
 
+        volume = new_size[0]
+
+        name = volume.path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != volume.size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         self.assertTrue(
             (new_size[0].size == int((self.disk_offering_100.disksize) * (1024**3))),
             "New size is not int((self.disk_offering_20) * (1024**3)"
@@ -402,6 +448,19 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             self.volume_1
             )
+
+        listvol = Volume.list(
+            self.apiclient,
+            id=volume.id
+            )
+        name = listvol[0].path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != listvol[0].size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         shrinkOk = False
         if volume.size > int((self.disk_offering_20.disksize) * (1024**3)):
             shrinkOk= True
@@ -423,6 +482,15 @@ class TestStoragePool(cloudstackTestCase):
             "New size is not int((self.disk_offering_20) * (1024**3)"
             )
         volume = new_size[0]
+
+        name = volume.path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != volume.size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         shrinkOk = False
         if volume.size > int((self.disk_offering_100.disksize) * (1024**3)):
             shrinkOk= True
@@ -445,6 +513,15 @@ class TestStoragePool(cloudstackTestCase):
 
         # return to small disk
         volume = new_size[0]
+
+        name = volume.path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != volume.size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         shrinkOk = False
         if volume.size > int((self.disk_offerings.disksize)* (1024**3)):
             shrinkOk= True
@@ -457,6 +534,17 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             id=volume.id
             )
+
+        volume = new_size[0]
+
+        name = volume.path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != volume.size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         self.assertTrue(
             (new_size[0].size == int((self.disk_offerings.disksize)*(1024**3))),
             "Could not return to Small disk"
@@ -482,6 +570,13 @@ class TestStoragePool(cloudstackTestCase):
             virtualmachineid = self.virtual_machine.id,
             id= volume_2.id
             )
+
+        name = list_vm_volumes[0].path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         print(list_vm_volumes)
         self.assertEqual(volume_2.id,list_vm_volumes[0].id, "Is true")
 
@@ -531,6 +626,15 @@ class TestStoragePool(cloudstackTestCase):
             "New size is not int((self.disk_offering_20) * (1024**3)"
             )
         self.volume_1 = new_size[0]
+
+        name = self.volume_1.path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != self.volume_1.size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         shrinkOk = False
         if self.volume_1.size > int((self.disk_offering_100.disksize) * (1024**3)):
             shrinkOk= True
@@ -553,6 +657,15 @@ class TestStoragePool(cloudstackTestCase):
 
         # return to small disk
         self.volume_1 = new_size[0]
+
+        name = self.volume_1.path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != self.volume_1.size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         shrinkOk = False
         if self.volume_1.size > int((self.disk_offerings.disksize)* (1024**3)):
             shrinkOk= True
@@ -565,6 +678,14 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             id=self.volume_1.id
             )
+
+        name = new_size[0].path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != new_size[0].size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
         self.assertTrue(
             (new_size[0].size == int((self.disk_offerings.disksize)*(1024**3))),
             "Could not return to Small disk"
@@ -579,6 +700,7 @@ class TestStoragePool(cloudstackTestCase):
             virtualmachineid = self.virtual_machine.id,
             id= self.volume_2.id
             )
+
         #check that the volume is not attached to VM
         self.assertIsNone(list_vm_volumes, "List volumes is not None")
 
@@ -599,10 +721,19 @@ class TestStoragePool(cloudstackTestCase):
             )
 
         self.assertTrue(
-            (new_size[0].size == int((self.disk_offering_20.disksize) * (1024**3))) , 
+            (new_size[0].size == int((self.disk_offering_20.disksize) * (1024**3))),
             "New size is not int((self.disk_offering_20) * (1024**3)"
             )
         self.volume_2 = new_size[0]
+
+        name = self.volume_2.path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != self.volume_2.size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         shrinkOk = False
         if self.volume_2.size > int((self.disk_offering_100.disksize) * (1024**3)):
             shrinkOk= True
@@ -619,12 +750,21 @@ class TestStoragePool(cloudstackTestCase):
             )
 
         self.assertTrue(
-            (new_size[0].size == int((self.disk_offering_100.disksize) * (1024**3))), 
+            (new_size[0].size == int((self.disk_offering_100.disksize) * (1024**3))),
             "New size is not int((self.disk_offering_20) * (1024**3)"
             )
 
         # return to small disk
         self.volume_2 = new_size[0]
+
+        name = self.volume_2.path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != self.volume_2.size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         shrinkOk = False
         if self.volume_2.size > int((self.disk_offerings.disksize)* (1024**3)):
             shrinkOk= True
@@ -637,6 +777,15 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             id=self.volume_2.id
             )
+
+        name = new_size[0].path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+            if spvolume[0].size != new_size[0].size:
+                raise Exception("Storpool volume size is not the same as CloudStack db size")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         self.assertTrue(
             (new_size[0].size == int((self.disk_offerings.disksize)*(1024**3))),
             "Could not return to Small disk"
@@ -651,6 +800,22 @@ class TestStoragePool(cloudstackTestCase):
             volume_id = self.volume_2.id
             )
 
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                    self.debug('################ %s' % sp_snapshot)
+                    flag = True
+            if flag == False:
+                raise Exception("Could not find snapshot in snapshot details")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         self.assertIsNotNone(snapshot, "Could not create snapshot")
         self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
 
@@ -659,6 +824,16 @@ class TestStoragePool(cloudstackTestCase):
             zoneid = self.zone.id,
             snapshotid = snapshot.id
             )
+
+        listvol = Volume.list(
+            self.apiclient,
+            id=volume.id
+            )
+        name = listvol[0].path.split("/")[3]
+        try:
+            spvolume = self.spapi.volumeList(volumeName="~" + name)
+        except spapi.ApiError as err:
+           raise Exception(err)
 
         self._cleanup.append(volume)
         self._cleanup.append(snapshot)
@@ -682,31 +857,47 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             self.volume
             )
- 
+
         self.assertIsNotNone(self.volume, "Detach: Is none")
  
         snapshot = Snapshot.create(
             self.apiclient,
             self.volume.id,
             )
- 
+
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                    self.debug('################ %s' % sp_snapshot)
+                    flag = True
+            if flag == False:
+                raise Exception("Could not find snapshot in snapshot details")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         self.assertIsNotNone(snapshot, "Snapshot is None")
- 
+
         self.assertIsInstance(snapshot, Snapshot, "Snapshot is not Instance of Snappshot")
- 
+
         snapshot = Snapshot.delete(
             snapshot,
             self.apiclient
             )
- 
+
         self.assertIsNone(snapshot, "Snapshot was not deleted")
- 
+
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_09_snapshot_root_disk(self):
         ''' Test ROOT Disk Snapshot 
         '''
         vm = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid = self.zone.id,
             templateid = self.template.id,
             serviceofferingid = self.service_offering.id,
@@ -719,16 +910,32 @@ class TestStoragePool(cloudstackTestCase):
             virtualmachineid = vm.id
             )
         self.assertIs(len(list_volumes_of_vm), 1, "VM has more disk than 1")
- 
+
         snapshot = Snapshot.create(
             self.apiclient,
             list_volumes_of_vm[0].id
             )
- 
+
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                    self.debug('################ %s' % sp_snapshot)
+                    flag = True
+            if flag == False:
+                raise Exception("Could not find snapshot in snapshot details")
+        except spapi.ApiError as err:
+           raise Exception(err)
+
         self.assertIsNotNone(snapshot, "Snapshot is None")
- 
+
         self.assertEqual(list_volumes_of_vm[0].id, snapshot.volumeid, "Snapshot is not for the same volume")
- 
+
         self._cleanup.append(snapshot)
         self._cleanup.append(vm)
 
@@ -743,15 +950,15 @@ class TestStoragePool(cloudstackTestCase):
             )
 
         self.virtual_machine.stop(self.apiclient)
-        
+
         template = self.create_template_from_snapshot(
             self.apiclient,
             self.services,
             volumeid = volume[0].id
             )
-        
+
         virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -773,7 +980,7 @@ class TestStoragePool(cloudstackTestCase):
             virtualmachineid = self.vm_migrate.id
             )
 
-        self.assertTrue(len(list_volumes_of_vm) == 1, "Thera are more volumes attached to VM")
+        self.assertTrue(len(list_volumes_of_vm) == 1, "There are more volumes attached to VM")
 
         if list_volumes_of_vm[0].storageid is self.primary_storage.id:
             cmd = migrateVirtualMachine.migrateVirtualMachineCmd()
@@ -787,13 +994,12 @@ class TestStoragePool(cloudstackTestCase):
                 )[0]
             self.assertNotEqual(volume.storageid, self.primary_storage.id, "Could not migrate VM")
 
-
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_12_migrate_volume_to_another_storage(self):
         ''' Migrate Volume To Another Primary Storage
         '''
         self.assertFalse(hasattr(self.volume, 'virtualmachineid') , "Volume is not detached")
-        
+
         self.assertFalse(hasattr(self.volume, 'storageid') , "Volume is not detached")
         volume = Volume.migrate(
             self.apiclient,
@@ -809,7 +1015,7 @@ class TestStoragePool(cloudstackTestCase):
     def test_13_create_vm_on_another_storpool_storage(self):
         """ Create Virtual Machine on another StorPool primary StoragePool"""
         virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=self.template.id,
             serviceofferingid=self.service_offering_ssd2.id,
@@ -846,7 +1052,7 @@ class TestStoragePool(cloudstackTestCase):
             )
 
         virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-Cluster-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -869,7 +1075,7 @@ class TestStoragePool(cloudstackTestCase):
         ''' Create volume from snapshot
         '''
         virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-Create-Volume-From-Snapshot-%d" % random.randint(0, 100) },
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=self.template.id,
             serviceofferingid=self.service_offering.id,
@@ -931,7 +1137,7 @@ class TestStoragePool(cloudstackTestCase):
             )
 
         virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -940,14 +1146,32 @@ class TestStoragePool(cloudstackTestCase):
             )
         ssh_client = virtual_machine.get_ssh_client(reconnect= True)
         name = 'ssd-' + template.id
-        try:
-            sp_snapshot = self.spapi.snapshotList(snapshotName = name)
-            self.spapi.snapshotDelete(snapshotName = name)
-        except spapi.ApiError as err:
-            raise Exception(err)
+        flag = False
+        storpoolGlId = None
+
+        sp_snapshots = self.spapi.snapshotsList()
+        for snap in sp_snapshots:
+            tags = snap.tags
+            for t in tags:
+                if tags[t] == template.id:
+                    storpoolGlId = snap.globalId
+                    flag = True
+                    break
+            else:
+                continue
+            break
+
+        if flag is False:
+            try:
+                sp_snapshot = self.spapi.snapshotList(snapshotName = name)
+            except spapi.ApiError as err:
+                raise Exception(err)
+
+
+        self.spapi.snapshotDelete(snapshotName ="~" + storpoolGlId)
 
         virtual_machine2 = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,

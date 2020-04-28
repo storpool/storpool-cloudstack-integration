@@ -19,18 +19,20 @@
 
 package com.cloud.hypervisor.kvm.resource.wrapper;
 
-import java.util.List;
+import static com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor.SP_LOG;
+
 import java.io.File;
-import org.apache.log4j.Logger;
+import java.util.List;
 
 import org.apache.cloudstack.storage.command.CopyCmdAnswer;
-import org.apache.cloudstack.storage.to.TemplateObjectTO;
 import org.apache.cloudstack.utils.qemu.QemuImg;
 import org.apache.cloudstack.utils.qemu.QemuImg.PhysicalDiskFormat;
 import org.apache.cloudstack.utils.qemu.QemuImgFile;
+import org.apache.log4j.Logger;
 
 import com.cloud.agent.api.storage.StorpoolDownloadTemplateCommand;
 import com.cloud.agent.api.to.DataStoreTO;
+import com.cloud.agent.api.to.DataTO;
 import com.cloud.agent.api.to.NfsTO;
 import com.cloud.hypervisor.kvm.resource.LibvirtComputingResource;
 import com.cloud.hypervisor.kvm.storage.KVMPhysicalDisk;
@@ -39,8 +41,6 @@ import com.cloud.hypervisor.kvm.storage.KVMStoragePoolManager;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.resource.CommandWrapper;
 import com.cloud.resource.ResourceWrapper;
-
-import static com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor.SP_LOG;
 
 @ResourceWrapper(handles = StorpoolDownloadTemplateCommand.class)
 public final class StorpoolDownloadTemplateCommandWrapper extends CommandWrapper<StorpoolDownloadTemplateCommand, CopyCmdAnswer, LibvirtComputingResource> {
@@ -51,12 +51,12 @@ public final class StorpoolDownloadTemplateCommandWrapper extends CommandWrapper
     public CopyCmdAnswer execute(final StorpoolDownloadTemplateCommand cmd, final LibvirtComputingResource libvirtComputingResource) {
         String dstPath = null;
         KVMStoragePool secondaryPool = null;
+        DataTO src = cmd.getSrcTO();
+        DataTO dst = cmd.getDstTO();
 
         try {
-            final TemplateObjectTO src = cmd.getSrcTO();
-            final TemplateObjectTO dst = cmd.getDstTO();
             final KVMStoragePoolManager storagePoolMgr = libvirtComputingResource.getStoragePoolMgr();
-            SP_LOG("StorpoolDownloadTemplateCommandWrapper.execute: src=" + src.getPath() + " srcName=" + src.getName() + " dst=" + dst.getPath());
+            SP_LOG("StorpoolDownloadTemplateCommandWrapper.execute: src=" + src.getPath() + " dst=" + dst.getPath());
 
             final DataStoreTO srcDataStore = src.getDataStore();
             if (!(srcDataStore instanceof NfsTO)) {
@@ -106,7 +106,7 @@ public final class StorpoolDownloadTemplateCommandWrapper extends CommandWrapper
             StorpoolStorageAdaptor.resize( Long.toString(srcDisk.getVirtualSize()), dst.getPath());
 
             dstPath = dst.getPath();
-            StorpoolStorageAdaptor.attachOrDetachVolume("attach", "volume", dstPath);
+            StorpoolStorageAdaptor.attachOrDetachVolume("attach", cmd.getObjectType(), dstPath);
 
             final QemuImgFile dstFile = new QemuImgFile(dstPath, PhysicalDiskFormat.RAW);
 
@@ -118,7 +118,7 @@ public final class StorpoolDownloadTemplateCommandWrapper extends CommandWrapper
             return new CopyCmdAnswer(error);
         } finally {
             if (dstPath != null) {
-                StorpoolStorageAdaptor.attachOrDetachVolume("detach", "volume", dstPath);
+                StorpoolStorageAdaptor.attachOrDetachVolume("detach", cmd.getObjectType(), dstPath);
             }
 
             if (secondaryPool != null) {

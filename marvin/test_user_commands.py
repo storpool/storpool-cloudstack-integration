@@ -23,6 +23,7 @@ import time
 import json
 import tempfile
 import os
+import uuid
 
 from marvin.cloudstackAPI import (listOsTypes,
                                   listTemplates,
@@ -214,7 +215,7 @@ class TestStoragePool(cloudstackTestCase):
         )
         cls.virtual_machine = VirtualMachine.create(
             cls.userapiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -223,7 +224,7 @@ class TestStoragePool(cloudstackTestCase):
         )
         cls.virtual_machine2= VirtualMachine.create(
             cls.userapiclient,
-            {"name":"StorPool-%d" % random.randint(0, 100)},
+            {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -299,7 +300,7 @@ class TestStoragePool(cloudstackTestCase):
         self.assertEqual(volume_attached.id, self.volume.id, "Is not the same volume ")
         try:
             # Login to VM and write data to file system
-            ssh_client = self.virtual_machine.get_ssh_client()
+            ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
 
             cmds = [
                 "echo %s > %s/%s" %
@@ -350,7 +351,7 @@ class TestStoragePool(cloudstackTestCase):
         """
 
         try:
-            ssh_client = self.virtual_machine.get_ssh_client()
+            ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
 
             cmds = [
                 "rm -rf %s/%s" % (self.test_dir, self.random_data),
@@ -434,11 +435,6 @@ class TestStoragePool(cloudstackTestCase):
             virtualmachineid=self.virtual_machine.id,
             listall=True)
 
-        self.assertEqual(
-            isinstance(list_snapshot_response, list),
-            True,
-            "Check list response returns a valid list"
-        )
         self.assertNotEqual(
             list_snapshot_response,
             None,
@@ -476,8 +472,9 @@ class TestStoragePool(cloudstackTestCase):
         vm = list_virtual_machines(self.userapiclient,id = self.virtual_machine.id)
         vm_tags = vm[0].tags
         volumes = list_volumes(
-            self.userapiclient,
+            self.apiclient,
             virtualmachineid = self.virtual_machine.id,
+            listall= True
             )
         self.debug('######################### test_01_set_vcpolicy_tag_to_vm_with_attached_disks tags ######################### ')
 
@@ -492,44 +489,14 @@ class TestStoragePool(cloudstackTestCase):
         except Exception as e:
             self.debug("##################### test_05_set_vcpolicy_tag_with_admin_and_try_delete_with_user %s " % e)
 
-#     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-#     def test_06_delete_all_virtual_machines(self):
-#         """Test to delete VMs
-#         """
-#         virtual_machines = list_virtual_machines(self.userapiclient)
-#         for v in virtual_machines:
-#                 cmd = destroyVirtualMachine.destroyVirtualMachineCmd()
-#                 cmd.id = v.id
-#                 cmd.expunge = True
-#                 self.userapiclient.destroyVirtualMachine(cmd)
-#      
-# 
-#     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-#     def test_07_delete_all_snapshots(self):
-#         """Test to delete snapshots
-#         """
-#         snapshots = list_snapshots(self.userapiclient)
-#         for s in snapshots:
-#             if s.state != "BackingUp":
-#                 cmd = deleteSnapshot.deleteSnapshotCmd()
-#                 cmd.id = s.id
-#                 self.userapiclient.deleteSnapshot(cmd)
-# 
-#     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
-#     def test_08_delete_all_datadisks(self):
-#         """Test to delete volumes
-#         """
-#         volumes = list_volumes(self.userapiclient)
-#         for s in volumes:
-#             if s.state != "ROOT" and s.virtualmachineid is None:
-#                 cmd = deleteVolume.deleteVolumeCmd()
-#                 cmd.id = s.id
-#                 self.userapiclient.deleteVolume(cmd)    
 
     def vc_policy_tags(self, volumes, vm_tags, vm):
         flag = False
         for v in volumes:
-            spvolume = self.spapi.volumeList(volumeName=v.id)
+            self.debug("Volume attached")
+            self.debug(v)
+            name = v.path.split("/")[3]
+            spvolume = self.spapi.volumeList(volumeName= "~" + name)
             tags = spvolume[0].tags
             for t in tags:
                 for vm_tag in vm_tags:
