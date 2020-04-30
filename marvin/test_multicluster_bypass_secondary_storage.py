@@ -601,6 +601,80 @@ class TestStoragePool(cloudstackTestCase):
             self.assertEquals(err.name, "objectDoesNotExist", "Error")
         self._cleanup.append(snapshot)
 
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_07_vm_from_bypassed_template(self):
+        '''Create virtual machine with sp.bypass.secondary.storage=false
+        from template created on StorPool and Secondary Storage'''
+
+        volume = list_volumes(
+                        self.apiclient,
+                        virtualmachineid = self.virtual_machine.id,
+                        type = "ROOT"
+                        )
+        try:
+            sp_volume = self.spapi.volumeList(volumeName = volume[0].id)
+            self.debug('################ %s' % sp_volume)
+        except spapi.ApiError as err:
+            self.assertEquals(err.name, "objectDoesNotExist", "Error")
+
+        backup_config = list_configurations(
+            self.apiclient,
+            name = "sp.bypass.secondary.storage")
+        if (backup_config[0].value == "false"):
+            backup_config = Configurations.update(self.apiclient,
+            name = "sp.bypass.secondary.storage",
+            value = "true")
+
+        snapshot = Snapshot.create(
+           self.apiclient,
+            volume_id = volume[0].id
+            )
+        try:
+            sp_snapshot = self.spapi.snapshotList(snapshotName = snapshot.id)
+            self.debug('################ %s' % sp_snapshot)
+        except spapi.ApiError as err:
+            raise Exception(err.name, "objectDoesNotExist", "Error")
+
+        self.assertIsNotNone(snapshot, "Could not create snapshot")
+        self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
+
+        template = self.create_template_from_snapshot(
+            self.apiclient,
+            self.services,
+            snapshotid = snapshot.id
+            )
+
+        try:
+            sp_template = self.spapi.snapshotList(snapshotName = template.id)
+            self.debug('################ %s' % sp_template)
+
+        except spapi.ApiError as err:
+            raise Exception(err.name, "objectDoesNotExist", "Error")
+
+        self.assertIsNotNone(template, "Template is None")
+        self.assertIsInstance(template, Template, "Template is instance of template")   
+
+        backup_config = list_configurations(
+            self.apiclient,
+            name = "sp.bypass.secondary.storage")
+        if (backup_config[0].value == "true"):
+            backup_config = Configurations.update(self.apiclient,
+            name = "sp.bypass.secondary.storage",
+            value = "false")  
+
+        vm = VirtualMachine.create(
+            self.apiclient,
+            {"name":"StorPool-Templ-%d" % random.randint(0, 100)},
+            zoneid=self.zone.id,
+            templateid = template.id,
+            serviceofferingid=self.service_offering.id,
+            hypervisor=self.hypervisor,
+            hostid = self.host[0].id,
+            rootdisksize=10,
+            )
+
+        ssh_client = vm.get_ssh_client(reconnect=True)
+
     @classmethod
     def list_hosts_by_cluster_id(cls, clusterid):
         """List all Hosts matching criteria"""

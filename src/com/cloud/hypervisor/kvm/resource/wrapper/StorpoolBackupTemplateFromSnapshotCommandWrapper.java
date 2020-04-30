@@ -68,7 +68,7 @@ public class StorpoolBackupTemplateFromSnapshotCommandWrapper extends CommandWra
             final String dstDir = secondaryPool.getLocalPath() + File.separator + dst.getPath();
             FileUtils.forceMkdir(new File(dstDir));
 
-            final String dstPath = dstDir + File.separator + dst.getName() + "." + src.getVolume().getFormat().getFileExtension();
+            final String dstPath = dstDir + File.separator + src.getName() + "." + src.getVolume().getFormat().getFileExtension();
             final QemuImgFile dstFile = new QemuImgFile(dstPath, PhysicalDiskFormat.QCOW2);
 
             final QemuImg qemu = new QemuImg(cmd.getWaitInMillSeconds());
@@ -89,7 +89,7 @@ public class StorpoolBackupTemplateFromSnapshotCommandWrapper extends CommandWra
 
             processor.configure("template processor", params);
 
-            FormatInfo info = processor.process(dstDir, null, dst.getName());
+            FormatInfo info = processor.process(dstDir, null, src.getName());
             TemplateLocation loc = new TemplateLocation(storage, dstDir);
             loc.create(1, true, dst.getName());
             loc.addFormat(info);
@@ -97,7 +97,7 @@ public class StorpoolBackupTemplateFromSnapshotCommandWrapper extends CommandWra
 
             TemplateProp prop = loc.getTemplateInfo();
             final TemplateObjectTO template = new TemplateObjectTO();
-            template.setPath(dst.getPath() + File.separator + dst.getName());
+            template.setPath(dst.getPath() + File.separator + src.getName()  + "." + src.getVolume().getFormat().getFileExtension());
             template.setFormat(ImageFormat.QCOW2);
             template.setSize(prop.getSize());
             template.setPhysicalSize(prop.getPhysicalSize());
