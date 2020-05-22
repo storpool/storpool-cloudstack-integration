@@ -370,17 +370,19 @@ public class StorpoolUtil {
 
     public static boolean templateExists(SpConnectionDesc conn) {
         SpApiResponse resp = GET("VolumeTemplateDescribe/" + conn.getTemplateName(), conn);
-        return resp.getError() == null;
-    }
-
-    public static boolean volumeExists(final String name, SpConnectionDesc conn) {
-        SpApiResponse resp = GET("MultiCluster/Volume/" + name, conn);
-        return resp.getError() == null;
+        return resp.getError() == null ? true : objectExists(resp.getError());
     }
 
     public static boolean snapshotExists(final String name, SpConnectionDesc conn) {
         SpApiResponse resp = GET("MultiCluster/Snapshot/" + name, conn);
-        return resp.getError() == null;
+        return resp.getError() == null ? true : objectExists(resp.getError());
+    }
+
+    private static boolean objectExists(SpApiError err) {
+        if(!err.getName().equals("objectDoesNotExist")) {
+            throw new CloudRuntimeException(err.getDescr());
+        }
+        return false;
     }
 
     public static JsonArray snapshotsList(SpConnectionDesc conn) {
