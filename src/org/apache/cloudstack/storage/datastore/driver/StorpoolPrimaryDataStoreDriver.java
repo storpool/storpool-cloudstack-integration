@@ -97,7 +97,6 @@ import com.cloud.utils.NumbersUtil;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.VirtualMachineManager;
 import com.cloud.vm.dao.VMInstanceDao;
-import com.google.gson.JsonObject;
 
 
 public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
@@ -315,10 +314,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     volumeDetailsDao.remove(detail.getId());
                 }
             } else {
-                JsonObject obj = resp.fullJson.getAsJsonObject();
-                JsonObject error = obj.getAsJsonObject("error");
-                String objectDoesNotExist = error.getAsJsonPrimitive("name").getAsString();
-                if (objectDoesNotExist != null && !objectDoesNotExist.equalsIgnoreCase("objectDoesNotExist")) {
+                if (!resp.getError().getName().equalsIgnoreCase("objectDoesNotExist")) {
                     err = String.format("Could not delete StorPool volume %s. Error: %s", name, resp.getError());
                 }
             }
@@ -580,15 +576,6 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 final String name = vinfo.getUuid();
                 SpConnectionDesc conn = new SpConnectionDesc(vinfo.getDataStore().getUuid());
 
-                if (vinfo.getPath() != null && StorpoolUtil.volumeExists(StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), conn)) {
-                    // reinstall template: delete current volume, then re-create
-                    SpApiResponse resp = StorpoolUtil.volumeDelete(StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), conn);
-                    if (resp.getError() == null) {
-                        updateStoragePool(dstData.getDataStore().getId(), - vinfo.getSize());
-                    } else {
-                        err = String.format("Could not delete old Storpool volume %s. Error: %s", name, resp.getError());
-                    }
-                }
                 if (!StorpoolUtil.snapshotExists(parentName, conn)) {
                     err = String.format("Snapshot=%s does not exist on StorPool. Will recreate it first on primary", parentName);
                     vmTemplatePoolDao.remove(templStoragePoolVO.getId());

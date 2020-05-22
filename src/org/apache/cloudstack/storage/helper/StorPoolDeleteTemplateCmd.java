@@ -21,7 +21,6 @@ import javax.inject.Inject;
 import org.apache.cloudstack.api.APICommand;
 import org.apache.cloudstack.api.ApiCommandJobType;
 import org.apache.cloudstack.api.BaseAsyncCmd;
-import org.apache.cloudstack.api.ServerApiException;
 import org.apache.cloudstack.api.command.user.template.DeleteTemplateCmd;
 import org.apache.cloudstack.api.response.SuccessResponse;
 import org.apache.cloudstack.engine.subsystem.api.storage.TemplateDataFactory;
@@ -37,6 +36,7 @@ import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.storage.VMTemplateDetailVO;
 import com.cloud.storage.dao.VMTemplateDetailsDao;
 import com.cloud.utils.component.ComponentContext;
+import com.cloud.utils.exception.CloudRuntimeException;
 
 @APICommand(name = "deleteTemplate",
             responseObject = SuccessResponse.class,
@@ -100,7 +100,7 @@ public class StorPoolDeleteTemplateCmd extends BaseAsyncCmd {
         TemplateDataStoreVO template = templateDataStoreDao.findByTemplate(obj.getId(), obj.getDataStore().getRole());
         try {
             this.deleteTemplate.execute();
-            log.info("DeleteTemplateCmd.execute was successfuly executed");
+            StorpoolUtil.spLog("DeleteTemplateCmd.execute template with id %s was deleted from secondary storage", obj.getUuid());
             this.setResponseObject(this.deleteTemplate.getResponseObject());
             if (obj != null && template != null && template.getLocalDownloadPath() != null) {
                 SpConnectionDesc conn = new SpConnectionDesc(obj.getDataStore().getUuid());
@@ -113,7 +113,8 @@ public class StorPoolDeleteTemplateCmd extends BaseAsyncCmd {
                     StorpoolUtil.spLog("Delete template from StorPool. Snapshot name=%s, result=%s", obj.getUuid(), resp.getError());
                 }
             }
-        }catch (ServerApiException e) {
+        }catch (CloudRuntimeException e) {
+            StorpoolUtil.spLog("DeleteTemplateCmd.execute got error=%s", e);
             throw e;
         }
     }

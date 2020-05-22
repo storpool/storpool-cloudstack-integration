@@ -53,6 +53,7 @@ import com.cloud.service.dao.ServiceOfferingDetailsDao;
 import com.cloud.storage.Snapshot;
 import com.cloud.storage.SnapshotVO;
 import com.cloud.storage.Storage.ImageFormat;
+import com.cloud.storage.StoragePool;
 import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.SnapshotDao;
 import com.cloud.storage.dao.VolumeDao;
@@ -250,15 +251,13 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
             VolumeInfo volumeObjectTO = volumeDataFactory.getVolume(volumeID);
             log.info(String.format("Volume id=%s, name=%s, instanceId=%s, path=%s", volume.getId(), volume.getName(),
                     volume.getInstanceId(), volume.getPath()));
-            SpConnectionDesc conn = new SpConnectionDesc(volumeObjectTO.getDataStore().getUuid());
+            StoragePool pool = (StoragePool) volumeObjectTO.getDataStore();
             String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volume.getPath(), true);
-            if (name != null) {
-                boolean isStorPoolVolume = StorpoolUtil.volumeExists(name, conn);
-                if (isStorPoolVolume) {
+            if (name != null && pool.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
+                SpConnectionDesc conn = new SpConnectionDesc(volumeObjectTO.getDataStore().getUuid());
                     log.debug(String.format("Updating StorPool's volume=%s tags", name));
                     VMInstanceVO vm = _vmInstanceDao.findById(vmId);
                     StorpoolUtil.volumeUpadateTags(name, vm != null ? vm.getUuid() : null, conn, value.length > 0 ? value[0] : "");
-                }
             }
         }
 
