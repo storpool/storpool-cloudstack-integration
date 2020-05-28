@@ -8,12 +8,17 @@ import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
+import com.cloud.server.ResourceTag;
+import com.cloud.server.ResourceTag.ResourceObjectType;
 import com.cloud.storage.DataStoreRole;
 import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.SnapshotDetailsDao;
 import com.cloud.storage.dao.SnapshotDetailsVO;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.utils.db.TransactionLegacy;
+import com.cloud.tags.dao.ResourceTagDao;
+import com.cloud.vm.VMInstanceVO;
+import com.cloud.vm.dao.VMInstanceDao;
 
 public class StorPoolHelper {
     private static final String UPDATE_SNAPSHOT_DETAILS_VALUE = "UPDATE `cloud`.`snapshot_details` SET value=? WHERE id=?";
@@ -76,5 +81,25 @@ public class StorPoolHelper {
             txn.rollback();
             StorpoolUtil.spLog("Could not update snapshot detail with id=%s", id);
         }
+    }
+
+    public static String getVcPolicyTag(Long vmId, ResourceTagDao resourceTagDao) {
+        if (vmId != null) {
+            ResourceTag tag = resourceTagDao.findByKey(vmId, ResourceObjectType.UserVm, StorpoolUtil.SP_VC_POLICY);
+            if (tag != null) {
+                return tag.getValue();
+            }
+        }
+        return null;
+    }
+
+    public static String getVMInstanceUUID(Long id, VMInstanceDao vmInstanceDao) {
+        if (id != null) {
+            VMInstanceVO vmInstance = vmInstanceDao.findById(id);
+            if (vmInstance != null) {
+                return vmInstance.getUuid();
+            }
+        }
+        return null;
     }
 }

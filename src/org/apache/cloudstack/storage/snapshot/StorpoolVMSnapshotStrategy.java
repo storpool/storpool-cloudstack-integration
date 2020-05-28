@@ -27,7 +27,6 @@ import org.apache.cloudstack.engine.subsystem.api.storage.VMSnapshotOptions;
 import org.apache.cloudstack.framework.config.dao.ConfigurationDao;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
-import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
@@ -52,8 +51,6 @@ import com.cloud.event.UsageEventUtils;
 import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
-import com.cloud.server.ResourceTag;
-import com.cloud.server.ResourceTag.ResourceObjectType;
 import com.cloud.storage.DiskOfferingVO;
 import com.cloud.storage.GuestOSHypervisorVO;
 import com.cloud.storage.GuestOSVO;
@@ -110,15 +107,14 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
      DiskOfferingDao diskOfferingDao;
      @Inject
      HostDao hostDao;
-
+     @Inject
+     private ResourceTagDao _resourceTagDao;
      @Inject
      VMInstanceDao vmInstance;
      @Inject
      PrimaryDataStoreDao storagePool;
      @Inject
      VirtualMachineManager virtManager;
-     @Inject
-     private ResourceTagDao _resourceTagDao;
      @Inject
      VMSnapshotDetailsDao vmSnapshotDetailsDao;
      @Inject
@@ -362,8 +358,6 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                     log.error("Could not delete snapshot for vm:" + err);
                 }
                 String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(volumeObjectTO.getPath(), true);
-                String backupSnapshot = volumeName;
-                Long size = volumeObjectTO.getSize();
                 VolumeDetailVO detail = volumeDetailsDao.findDetail(volumeObjectTO.getId(), StorpoolUtil.SP_PROVIDER_NAME);
                 SpApiResponse updateVolumeResponse = StorpoolUtil.volumeUpdateRename(volumeName, "", detail != null ? StorpoolStorageAdaptor.getVolumeNameFromPath(detail.getValue(), false) : null, new SpConnectionDesc(volumeObjectTO.getDataStore().getUuid()));
 
@@ -372,44 +366,15 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                     err = String.format("StorpoolVMSnapshotStrategy.canHandle - Could not update StorPool's volume %s to it's globalId due to %s", volumeName, updateVolumeResponse.getError().getDescr());
                 }
 
-                SpApiResponse resp = StorpoolUtil.volumeSnapshot(volumeName, backupSnapshot, userVm.getUuid(), conn);
+                SpApiResponse resp = StorpoolUtil.detachAllForced(volumeName, false, conn);
                 if (resp.getError() != null) {
-                    err = String.format("Volume snapshot failed error=%s", resp.getError());
-                    log.error("Volume snapshot failed " + err);
+                    err = String.format("Could not detach StorPool volume %s from a group snapshot, due to %s", volumeName, resp.getError());
+                    throw new CloudRuntimeException(err);
                 }
-                backupSnapshot = StorpoolUtil.getSnapshotNameFromResponse(resp, true, StorpoolUtil.GLOBAL_ID);
-
-                StorpoolUtil.spLog(
-                        "StorpoolVMSnapshotStrategy.reverVMSnapshot snapshotName=%s, volumeName=%s, backupSnapshot=%s, size=%s",
-                        snapshotName, volumeName, backupSnapshot, size);
-
-                resp = StorpoolUtil.volumeDelete(volumeName, conn);
+                resp = StorpoolUtil.volumeRevert(volumeName, snapshotName, conn);
                 if (resp.getError() != null) {
-                    StorpoolUtil.snapshotDelete(backupSnapshot, conn);
-                    err = String.format("Volume delete failed %s", resp.getError());
-                    log.error("Volume delete failed %s " + err);
-                }
-                String vmSnapshotName = vmSnapshot.getUuid();
-                ResourceTag resourceTag =  _resourceTagDao.findByKey(userVm.getId(), ResourceObjectType.UserVm, StorpoolUtil.SP_VC_POLICY);
-                resp = StorpoolUtil.volumeCreateWithTags(vmSnapshotName, snapshotName, size, userVm.getUuid(), resourceTag != null ? resourceTag.getValue() : null, conn);
-                if (resp.getError() != null) {
-                    err = String.format("Could not create volume from snapshot with name=%s, error=%s", snapshotName, resp.getError());
-                    log.error("Create Could not complete revert task" + err);
-                    resp = StorpoolUtil.volumeCreateWithTags(vmSnapshotName, backupSnapshot, size, userVm.getUuid(), resourceTag != null ? resourceTag.getValue() : null, conn);
-                    if (resp.getError() != null) {
-                        err = String.format("Could not create volume from backup snapshot with name=%s, error=%s", backupSnapshot, resp.getError());
-                    } else {
-                        StorpoolUtil.snapshotDelete(backupSnapshot, conn);
-                    }
-                } else {
-                    StorpoolUtil.snapshotDelete(backupSnapshot, conn);
-                }
-                StorPoolHelper.updateVolumeInfo(volumeObjectTO, size, resp, volumeDao);
-                addVmSnapshotDetails(snapshotDetailsVO, vmSnapshot, snapshotName, volumeObjectTO);
-                if (err != null) {
-                    StorpoolUtil.spLog("Revert vm snapshot failed due to %s", err);
-
-                     throw new CloudRuntimeException(err);
+                    err = String.format("Create Could not complete revert task for volumeName=%s , and snapshotName=%s",volumeName, snapshotName);
+                    throw new CloudRuntimeException(err);
                 }
                 }
                answer = new StorpoolRevertToVMSnapshotAnswer(revertToSnapshotCommand, volumeTOs, null);
@@ -434,12 +399,9 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
 
      //Keeping volume snapshot part of the group snapshot in vm_snapshot_details table.
      //In this way if they are created with global id CloudStack will know how to find them
-    private void addVmSnapshotDetails(VMSnapshotDetailsVO snapshotDetailsVo, VMSnapshot vmSnapshot, String snapshotName,
-            VolumeObjectTO volume) {
-        if (snapshotDetailsVo == null) {
-            VMSnapshotDetailsVO details = new VMSnapshotDetailsVO(vmSnapshot.getId(), volume.getUuid(), snapshotName, true);
-            vmSnapshotDetailsDao.persist(details);
-        }
+    private void addVmSnapshotDetails(VMSnapshot vmSnapshot, String snapshotName, VolumeObjectTO volume) {
+        VMSnapshotDetailsVO details = new VMSnapshotDetailsVO(vmSnapshot.getId(), volume.getUuid(), snapshotName, false);
+        vmSnapshotDetailsDao.persist(details);
     }
 
      @Override

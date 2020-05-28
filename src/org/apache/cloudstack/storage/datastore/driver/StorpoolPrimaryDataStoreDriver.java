@@ -781,58 +781,35 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         final VolumeInfo vinfo = snapshot.getBaseVolume();
         final String snapshotName = StorPoolHelper.getSnapshotName(snapshot.getId(), snapshot.getUuid(), snapshotDataStoreDao, _snapshotDetailsDao);
         final String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true);
-        SpConnectionDesc conn = new SpConnectionDesc(vinfo.getDataStore().getUuid());
-        String backupSnapshotName = null;
-        final Long size = snapshot.getSize();
         StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.revertSnapshot: snapshot: name=%s, uuid=%s, volume: name=%s, uuid=%s", snapshotName, snapshot.getUuid(), volumeName, vinfo.getUuid());
+        SpConnectionDesc conn = new SpConnectionDesc(vinfo.getDataStore().getUuid());
 
         VolumeDetailVO detail = volumeDetailsDao.findDetail(vinfo.getId(), StorpoolUtil.SP_PROVIDER_NAME);
         SpApiResponse updateVolumeResponse = StorpoolUtil.volumeUpdateRename(StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), "", detail != null ? StorpoolStorageAdaptor.getVolumeNameFromPath(detail.getValue(), false) : null, conn);
+        String err = null;
 
         if (updateVolumeResponse.getError() != null) {
             StorpoolUtil.spLog("Could not update StorPool's volume %s to it's globalId due to %s", StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), updateVolumeResponse.getError().getDescr());
-            final String err = String.format("Could not update StorPool's volume %s to it's globalId due to %s", StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), updateVolumeResponse.getError().getDescr());
+            err = String.format("Could not update StorPool's volume %s to it's globalId due to %s", StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), updateVolumeResponse.getError().getDescr());
             completeResponse(err, callback);
             return;
         }
-
-        // Ignore the error that will almost certainly occur - no such snapshot
-        backupSnapshotName = volumeName;
-        SpApiResponse resp = StorpoolUtil.volumeSnapshot(volumeName, backupSnapshotName, getVMInstanceUUID(vinfo.getInstanceId()), conn);
-
+        SpApiResponse resp = StorpoolUtil.detachAllForced(volumeName, false, conn);
         if (resp.getError() != null) {
-            final String err = String.format("Could not revert StorPool volume %s to the %s snapshot: could not create a temporary snapshot for the old volume: error %s", vinfo.getName(), snapshot.getName(), resp.getError());
+            err = String.format("Could not detach StorPool volume %s due to %s", volumeName, resp.getError());
             completeResponse(err, callback);
             return;
         }
-        backupSnapshotName = StorpoolUtil.getSnapshotNameFromResponse(resp, true, StorpoolUtil.GLOBAL_ID);
-
-        resp = StorpoolUtil.volumeDelete(volumeName, conn);
-        if (resp.getError() != null) {
-            StorpoolUtil.snapshotDelete(backupSnapshotName, conn);
-            final String err = String.format("Could not revert StorPool volume %s to the %s snapshot: could not delete the old volume: error %s", vinfo.getName(), snapshot.getName(), resp.getError());
+        SpApiResponse response = StorpoolUtil.volumeRevert(volumeName, snapshotName, conn);
+        if (response.getError() != null) {
+            err = String.format(
+                    "Could not revert StorPool volume %s to the %s snapshot: could not create the new volume: error %s",
+                    volumeName, snapshotName, response.getError());
             completeResponse(err, callback);
             return;
         }
-        Long vmId = vinfo.getInstanceId();
-
-        resp = StorpoolUtil.volumeCreateWithTags(snapshot.getUuid(), snapshotName, size, getVMInstanceUUID(vmId), getVcPolicyTag(vmId), conn);
-        if (resp.getError() != null) {
-            // Mmm, try to restore it first...
-            String err = String.format("Could not revert StorPool volume %s to the %s snapshot: could not create the new volume: error %s", vinfo.getName(), snapshot.getName(), resp.getError());
-            resp = StorpoolUtil.volumeCreateWithTags(snapshot.getUuid(), backupSnapshotName, size, getVMInstanceUUID(vmId), getVcPolicyTag(vmId), conn);
-            if (resp.getError() != null)
-                err = String.format("%s.  Also, could not even restore the old volume: %s", err, resp.getError());
-            else
-                StorpoolUtil.snapshotDelete(backupSnapshotName, conn);
-            completeResponse(err, callback);
-            return;
-        }
-
-        StorpoolUtil.snapshotDelete(backupSnapshotName, conn);
 
         final VolumeObjectTO to = (VolumeObjectTO)vinfo.getTO();
-        StorPoolHelper.updateVolumeInfo(to, size, resp, volumeDao);
         completeResponse(to, callback);
     }
 
