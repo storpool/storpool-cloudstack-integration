@@ -33,4 +33,6 @@
 		class="org.apache.cloudstack.storage.helper.StorPoolReplaceCommandsHelper" init-method="init"/>
       <bean id="updateToGlobalIds"
          class="org.apache.cloudstack.storage.helper.StorPoolMigrationToGlobalId" />
+      <bean id="cleanupTags"
+         class="org.apache.cloudstack.storage.helper.StorPoolAbandonObjectsCollector" />
 </beans>

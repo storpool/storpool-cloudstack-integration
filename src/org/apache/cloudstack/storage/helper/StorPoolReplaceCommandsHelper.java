@@ -257,7 +257,7 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
                 SpConnectionDesc conn = new SpConnectionDesc(volumeObjectTO.getDataStore().getUuid());
                     log.debug(String.format("Updating StorPool's volume=%s tags", name));
                     VMInstanceVO vm = _vmInstanceDao.findById(vmId);
-                    StorpoolUtil.volumeUpadateTags(name, vm != null ? vm.getUuid() : null, conn, value.length > 0 ? value[0] : "");
+                    StorpoolUtil.volumeUpadateTags(name, vm != null ? vm.getUuid() : "", conn, value.length > 0 ? value[0] : "");
             }
         }
 

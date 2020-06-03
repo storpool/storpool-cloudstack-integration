@@ -106,11 +106,15 @@ public class StorPoolDeleteTemplateCmd extends BaseAsyncCmd {
                 SpConnectionDesc conn = new SpConnectionDesc(obj.getDataStore().getUuid());
                 if (StorpoolUtil.snapshotExists(StorpoolStorageAdaptor.getVolumeNameFromPath(template.getLocalDownloadPath(), true), conn)) {
                     SpApiResponse resp = StorpoolUtil.snapshotDelete(StorpoolStorageAdaptor.getVolumeNameFromPath(template.getLocalDownloadPath(), true), conn);
-                    VMTemplateDetailVO detail = vmTemplateDetailDao.findDetail(template.getTemplateId(), StorpoolUtil.SP_STORAGE_POOL_ID);
-                    if (detail != null) {
-                        vmTemplateDetailDao.remove(detail.getId());
+                    if (resp.getError() == null) {
+                        VMTemplateDetailVO detail = vmTemplateDetailDao.findDetail(template.getTemplateId(), StorpoolUtil.SP_STORAGE_POOL_ID);
+                        if (detail != null) {
+                            vmTemplateDetailDao.remove(detail.getId());
+                        }
+                        StorpoolUtil.spLog("Deleted template from StorPool %s", template.getLocalDownloadPath());
+                    }else {
+                        StorpoolUtil.spLog("Could not delete template from StorPool %s due to %s", template.getLocalDownloadPath(), resp.getError());
                     }
-                    StorpoolUtil.spLog("Delete template from StorPool. Snapshot name=%s, result=%s", obj.getUuid(), resp.getError());
                 }
             }
         }catch (CloudRuntimeException e) {

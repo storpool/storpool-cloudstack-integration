@@ -167,7 +167,7 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                     vmSnapshotVO.setParent(current.getId());
                }
 
-               SpApiResponse resp = StorpoolUtil.volumesGroupSnapshot(volumeTOs, userVm.getUuid(), vmSnapshotVO.getUuid(), conn);
+               SpApiResponse resp = StorpoolUtil.volumesGroupSnapshot(volumeTOs, userVm.getUuid(), vmSnapshotVO.getUuid(), "group", conn);
                JsonObject obj = resp.fullJson.getAsJsonObject();
                JsonArray snapshots = obj.getAsJsonObject("data").getAsJsonArray("snapshots");
                StorpoolUtil.spLog("Volumes=%s attached to virtual machine", volumeTOs.toString());

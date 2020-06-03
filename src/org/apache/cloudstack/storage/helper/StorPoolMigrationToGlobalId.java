@@ -1,11 +1,8 @@
 package org.apache.cloudstack.storage.helper;
 
-import java.io.IOException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -24,15 +21,13 @@ import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreVO;
+import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
 import org.apache.cloudstack.storage.snapshot.BackupManager;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.cloudstack.storage.vmsnapshot.VMSnapshotHelper;
-import org.apache.log4j.Appender;
 import org.apache.log4j.Logger;
-import org.apache.log4j.PatternLayout;
-import org.apache.log4j.RollingFileAppender;
 
 import com.cloud.api.ApiServer;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
@@ -126,7 +121,7 @@ public class StorPoolMigrationToGlobalId extends ManagerBase {
                 if (vmSnapshotsVO.size() > 0 || templatesStoreRefs.size() > 0
                         || templatesOnPool.size() > 0 || volumes.size() > 0 || activeSnapshots.size() > 0) {
 
-                    appendLogger(log, LOG_FILE);
+                    StorPoolHelper.appendLogger(log, LOG_FILE, "update");
                     _executorService = Executors.newCachedThreadPool(new NamedThreadFactory("StorPoolMigrationToGlobalId"));
                     _executorService.submit(new VolumesUpdater(storpoolVolumes, volumes));
                     _executorService.submit(new VmSnapshotsUpdater(storpoolSnapshots, vmSnapshotsVO, poolList));
@@ -405,23 +400,5 @@ public class StorPoolMigrationToGlobalId extends ManagerBase {
         sc.and(sc.entity().getState(), Op.EQ, Volume.State.Ready);
         sc.and(sc.entity().getPath(), Op.LIKE, StorpoolUtil.SP_OLD_PATH + "%");
         return sc.list();
-    }
-
-    //Initialize custom logger for updated volume and snapshots
-    private static void appendLogger(Logger log, String filePath) {
-        Appender appender = null;
-        PatternLayout patternLayout = new PatternLayout();
-        patternLayout.setConversionPattern("%d{YYYY-MM-dd HH:mm:ss.SSS}  %m%n");
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
-        Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-        String path = filePath + "-" + sdf.format(timestamp) + ".log";
-        try {
-            appender = new RollingFileAppender(patternLayout, path);
-            log.setAdditivity(false);
-            log.addAppender(appender);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        StorpoolUtil.spLog("You can find information about volumes and snapshots, which will be updated in Database with their globalIs in %s log file", path);
     }
 }
