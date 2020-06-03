@@ -115,7 +115,8 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
         String volumeName = "";
 
         String parentName = StorPoolHelper.getSnapshotName(sInfo.getId(), sInfo.getUuid(), snapshotStoreDao, snapshotDetailsDao);
-        SpApiResponse res = StorpoolUtil.volumeCreate(name, parentName, sInfo.getSize(), conn);
+        //TODO volume tags cs - template
+        SpApiResponse res = StorpoolUtil.volumeCreate(name, parentName, sInfo.getSize(), null, "no", "template", conn);
         CopyCmdAnswer answer = null;
         String err = null;
         if (res.getError() != null) {

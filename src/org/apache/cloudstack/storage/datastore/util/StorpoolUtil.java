@@ -378,13 +378,6 @@ public class StorpoolUtil {
         return resp.getError() == null ? true : objectExists(resp.getError());
     }
 
-    private static boolean objectExists(SpApiError err) {
-        if(!err.getName().equals("objectDoesNotExist")) {
-            throw new CloudRuntimeException(err.getDescr());
-        }
-        return false;
-    }
-
     public static JsonArray snapshotsList(SpConnectionDesc conn) {
         SpApiResponse resp = GET("MultiCluster/SnapshotsList", conn);
         JsonObject obj = resp.fullJson.getAsJsonObject();
@@ -397,6 +390,13 @@ public class StorpoolUtil {
         JsonObject obj = resp.fullJson.getAsJsonObject();
         JsonArray data = obj.getAsJsonArray("data");
         return data;
+    }
+
+    private static boolean objectExists(SpApiError err) {
+        if(!err.getName().equals("objectDoesNotExist")) {
+            throw new CloudRuntimeException(err.getDescr());
+        }
+        return false;
     }
 
     public static long snapshotSize(final String name, SpConnectionDesc conn) {
@@ -425,37 +425,21 @@ public class StorpoolUtil {
         return clusterId != null ? clusterId.getAsString() : null;
     }
 
-    public static SpApiResponse volumeCreate(final String name, final String parentName, final Long size, SpConnectionDesc conn) {
-        Map<String, Object> json = new HashMap<>();
-        Map<String, String> tags = new HashMap<>();
-        tags.put("uuid", name != null ? name : "");
-        json.put("tags", tags);
-        json.put("name", "");
-        json.put("parent", parentName);
-        json.put("template", conn.getTemplateName());
-        json.put("size", size);
-        return POST("MultiCluster/VolumeCreate", json, conn);
-    }
-
-    public static SpApiResponse volumeCreateWithTags(final String name, final String parentName, final Long size, String uuid, String vcPolicy, SpConnectionDesc conn) {
+    public static SpApiResponse volumeCreate(final String name, final String parentName, final Long size, String vmUuid, String vcPolicy, String csTag, SpConnectionDesc conn) {
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("name", "");
         json.put("parent", parentName);
         json.put("size", size);
         json.put("template", conn.getTemplateName());
-        Map<String, String> tags = new HashMap<>();
-        tags.put("uuid", name != null ? name : "");
-        tags.put("cvm", uuid != null ? uuid : "");
-        tags.put(SP_VC_POLICY, vcPolicy != null ? vcPolicy : "");
+        Map<String, String> tags = StorPoolHelper.addStorPoolTags(name, vmUuid, csTag, vcPolicy);
         json.put("tags", tags);
         return POST("MultiCluster/VolumeCreate", json, conn);
     }
 
-    public static SpApiResponse volumeCopy(final String name, final String baseOn, SpConnectionDesc conn) {
+    public static SpApiResponse volumeCopy(final String name, final String baseOn, String csTag, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
         json.put("baseOn", baseOn);
-        Map<String, String> tags = new HashMap<>();
-        tags.put("uuid", name != null ? name : "");
+        Map<String, String> tags = StorPoolHelper.addStorPoolTags(name, null, csTag, null);
         json.put("tags", tags);
         return POST("MultiCluster/VolumeCreate", json, conn);
     }
@@ -480,35 +464,23 @@ public class StorpoolUtil {
 
     public static SpApiResponse volumeUpadateTags(final String name, final String uuid, SpConnectionDesc conn, String vcPolicy) {
          Map<String, Object> json = new HashMap<>();
-         Map<String, String> tags = new HashMap<>();
-         tags.put("cvm", uuid != null ? uuid : "");
-         tags.put(SP_VC_POLICY, vcPolicy != null ? vcPolicy : "");
+         Map<String, String> tags = StorPoolHelper.addStorPoolTags(null, uuid, null, vcPolicy);
          json.put("tags", tags);
          return POST("MultiCluster/VolumeUpdate/" + name, json, conn);
     }
 
-    public static SpApiResponse snapshotUpadateTags(final String name, final String uuid, SpConnectionDesc conn) {
+    public static SpApiResponse volumeSnapshot(final String volumeName, final String snapshotName, String vmUuid, String csTag, String vcPolicy, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
-        Map<String, String> tags = new HashMap<>();
-        tags.put("cvm", uuid != null ? uuid : "");
-        json.put("tags", tags);
-        return POST("MultiCluster/SnapshotUpdate/" + name, json , conn);
-   }
-
-    public static SpApiResponse volumeSnapshot(final String volumeName, final String snapshotName, String vmid, SpConnectionDesc conn) {
-        Map<String, Object> json = new HashMap<>();
-        Map<String, String> tags = new HashMap<>();
+        Map<String, String> tags = StorPoolHelper.addStorPoolTags(snapshotName, vmUuid, csTag, vcPolicy);
         json.put("name", "");
-        tags.put("uuid", snapshotName);
-        tags.put("cvm", vmid);
         json.put("tags", tags);
 
         return POST("MultiCluster/VolumeSnapshot/" + volumeName, json , conn);
     }
 
-    public static SpApiResponse volumesGroupSnapshot(final List<VolumeObjectTO> volumeTOs, final String uuid, final String snapshotName, SpConnectionDesc conn) {
+    public static SpApiResponse volumesGroupSnapshot(final List<VolumeObjectTO> volumeTOs, final String vmUuid, final String snapshotName, String csTag, SpConnectionDesc conn) {
          Map<String,Object> json = new LinkedHashMap<>();
-         Map<String, Object> tags = new HashMap<>();
+         Map<String, String> tags = StorPoolHelper.addStorPoolTags(snapshotName, vmUuid, csTag, null);
          List<Map<String, Object>> volumes = new ArrayList<>();
          for (VolumeObjectTO volumeTO : volumeTOs) {
               Map<String, Object> vol = new LinkedHashMap<>();
@@ -517,8 +489,6 @@ public class StorpoolUtil {
               vol.put("volume", name);
               volumes.add(vol);
          }
-         tags.put("uuid", snapshotName);
-         tags.put("cvm", uuid);
          json.put("tags", tags);
          json.put("volumes", volumes);
          log.info("json:"+ json);
