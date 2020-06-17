@@ -1,0 +1,221 @@
+#!/usr/bin/python3
+
+"""
+Runs migration tests between two changes or between all changes between the
+two recursively. Requires querygerrit from pipelines repository.
+"""
+
+
+import argparse
+import glob
+import imp
+import pathlib
+import subprocess
+import sys
+import time
+
+QG = imp.load_source("QG", "/usr/local/bin/querygerrit")
+
+
+GERRIT_USER = "jenkins"
+GERRIT_REMOTE = "gerrit.vm.storpool.local"
+GERRIT_PORT = "29418"
+GERRIT_URL = (
+    f"ssh://{GERRIT_USER}@{GERRIT_REMOTE}:{GERRIT_PORT}/cloudstack.git"
+)
+QUERY = {
+    "GERRIT_HOST": GERRIT_REMOTE,
+    "GERRIT_PORT": GERRIT_PORT,
+}
+
+
+def getargs():
+    """returns ArgumentParser instance object"""
+    parser = argparse.ArgumentParser(
+        description="""
+        Runs all migration tests in test_dir between "initial_change_id"
+        and "end_change_id". WARNING: Assumes "end_change_id" is *always* later
+        than "initial_change_id".
+        """
+    )
+    parser.add_argument(
+        "-r",
+        "--recursive",
+        help=(
+            "Go through all combinations between 'initial_change_id' and"
+            "'end_change_id' (Warning: this might be a very long run"
+            "depending on the number of changes)"
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "-t1", "--target1", help=("Source cluster target node (str)"), type=str
+    )
+    parser.add_argument(
+        "-t2",
+        "--target2",
+        help=("Destination cluster target node (str)"),
+        type=str,
+    )
+    parser.add_argument(
+        "-t3",
+        "--target3",
+        help=("Destination cluster target node 3 (str)"),
+        type=str,
+    )
+    parser.add_argument(
+        "-t4",
+        "--target4",
+        help=("Destination cluster target node 4 (str)"),
+        type=str,
+    )
+    parser.add_argument(
+        "initial_change_id",
+        help=("Branch name or gerrit change ID to start from"),
+        type=str,
+    )
+    parser.add_argument(
+        "end_change_id",
+        help=("Branch name or gerrit change ID to end at"),
+        type=str,
+    )
+    parser.add_argument(
+        "test_dir", help=("Directory with tests"), type=pathlib.Path,
+    )
+
+    return parser.parse_args()
+
+
+def get_details(change):
+    """
+    change: str
+    return tuple (git commit hash, gerrit refspec)
+    """
+    query = QUERY.copy()
+    query.update(
+        {"GERRIT_CHANGE_NUMBER": change,}
+    )
+    res = QG.getquery(query, ["--current-patch-set", "--format=JSON",])
+    pset = res.get("currentPatchSet", {})
+    if not pset:
+        sys.exit(f"Failed to get currentPatchSet for {change}")
+    chash = pset.get("revision")
+    ref = pset.get("ref")
+    if not chash or not ref:
+        sys.exit(f"Failed to get commit hash or refspec for {change}")
+    return chash, ref
+
+
+def checkout(change, refspec):
+    """
+    change, refspec: str change and gerrit refspec to checkout in present
+    directory
+    """
+    cmds = [
+        ["git", "fetch", "--tags", GERRIT_URL, refspec,],
+        ["git", "checkout", "-b", change, "FETCH_HEAD"],
+    ]
+    for cmd in cmds:
+        print(f"Executing cmd: {' '.join(cmd)}")
+        try:
+            res = subprocess.check_call(cmd)
+        except subprocess.CalledProcessError as err:
+            sys.exit(err)
+
+
+def get_commit_log(details=None):
+    """
+    details: tuple (start, end) str hashes
+    returns the output of git log
+    """
+    cmd = ["git", "log", "--pretty=%H"]
+    if details:
+        start, end = details
+        cmd.append(f"{start}^..{end}")
+    return [
+        r.split()[-1]
+        for r in
+        subprocess.check_output(cmd).decode("us-ascii").splitlines()
+        if r.startswith("commit")
+    ]
+    return [
+        for r in subprocess.check_output(cmd).splitlines()
+    ]
+
+
+# pylint: disable=too-many-arguments
+def runtests(pairs, tests, target1, target2, target3, target4):
+    """
+    pairs: list of tuple (start, end) str hashes
+    tests: list of paths to test files to execute
+    testdir: str path
+    target1, target2: -s and -r arguments for each test
+    directory, forked, build: str paths to workdir, cs plugin dir, cloudstack
+    build
+    forked=/home/jenkins/workspace/cloudstack-tests-pipeline/cloudstack
+    returns dict of results for each test if a failure occurred
+    """
+    failures = {}
+    for test in tests:
+        for start, end in pairs:
+            cmd = [
+                "python2",
+                test,
+                "--uuid",
+                start,
+                "--globalid",
+                end,
+                "--remote",
+                target1,
+                "--second",
+                target2,
+                "--third",
+                target3,
+                "--fourth",
+                target4,
+            ]
+            print(f"Executing cmd: {' '.join(cmd)}")
+            res = subprocess.call(cmd)
+            if res != 0:
+                failures[test] = res
+            time.sleep(60)
+    return failures
+
+
+def main(args=getargs()):
+    """
+    downloads changes locally, executes tests
+    """
+    start, startrefsp = get_details(args.initial_change_id)
+    end, endrefsp = get_details(args.end_change_id)
+    for change, chash, refspec in [
+        (args.initial_change_id, start, startrefsp),
+        (args.end_change_id, end, endrefsp),
+    ]:
+        checkout(change, refspec)
+        clog = get_commit_log()
+        if clog[0] != chash:
+            sys.exit(
+                f"Something went wrong, expected {chash}, got {clog},"
+                "bailing out"
+            )
+    if not args.test_dir.exists() or args.test_dir.is_file():
+        sys.exit(f"{args.test_dir} does not exist or not dir")
+    tests = glob.glob(str(args.test_dir.joinpath("*.py")))
+    pairs = [(start, end)]
+    if args.recursive:
+        pairs = [
+            (start, i)
+            for i in list(reversed(get_commit_log((start, end))))[1:]
+        ]
+    failures = runtests(
+        pairs, tests, args.target1, args.target2, args.target3, args.target4
+    )
+    if failures:
+        sys.exit(
+            f"Failures detected, failed tests (and exit statuses): {failures}"
+        )
+
+
+if __name__ == "__main__":
+    main()
