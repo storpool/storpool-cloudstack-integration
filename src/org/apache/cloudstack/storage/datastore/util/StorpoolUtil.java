@@ -399,10 +399,13 @@ public class StorpoolUtil {
         return false;
     }
 
-    public static long snapshotSize(final String name, SpConnectionDesc conn) {
+    public static Long snapshotSize(final String name, SpConnectionDesc conn) {
         SpApiResponse resp = GET("MultiCluster/Snapshot/" + name, conn);
         JsonObject obj = resp.fullJson.getAsJsonObject();
 
+        if (resp.getError() != null && !objectExists(resp.getError())) {
+            return null;
+        }
         JsonObject data = obj.getAsJsonArray("data").get(0).getAsJsonObject();
         return data.getAsJsonPrimitive("size").getAsLong();
     }
