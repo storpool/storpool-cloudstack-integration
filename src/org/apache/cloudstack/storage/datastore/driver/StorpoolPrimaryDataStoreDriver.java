@@ -585,13 +585,13 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 final String name = vinfo.getUuid();
                 SpConnectionDesc conn = new SpConnectionDesc(vinfo.getDataStore().getUuid());
 
-                if (!StorpoolUtil.snapshotExists(parentName, conn)) {
+                Long snapshotSize = StorpoolUtil.snapshotSize(parentName, conn);
+                if (snapshotSize == null) {
                     err = String.format("Snapshot=%s does not exist on StorPool. Will recreate it first on primary", parentName);
                     vmTemplatePoolDao.remove(templStoragePoolVO.getId());
                 }
                 if (err == null) {
                     long size = vinfo.getSize();
-                    long snapshotSize = StorpoolUtil.snapshotSize(parentName, conn);
                     if( size < snapshotSize )
                     {
                         StorpoolUtil.spLog(String.format("provided size is too small for snapshot. Provided %d, snapshot %d. Using snapshot size", size, snapshotSize));
@@ -729,7 +729,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 err = String.format("Unsupported copy operation from %s (type %s) to %s (type %s)", srcData.getUuid(), srcType, dstData.getUuid(), dstType);
             }
         } catch (Exception e) {
-            StorpoolUtil.spLog(String.format("Caught exception: %s", e.toString()));
+            StorpoolUtil.spLog("Caught exception: %s", e.toString());
             err = e.toString();
         }
 
@@ -738,7 +738,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         }
 
         if (err != null) {
-            StorpoolUtil.spLog(err);
+            StorpoolUtil.spLog("Failed due to %s", err);
 
             log.error(err);
             answer = new Answer(cmd, false, err);
