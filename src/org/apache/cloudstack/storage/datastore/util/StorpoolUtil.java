@@ -428,9 +428,10 @@ public class StorpoolUtil {
         return clusterId != null ? clusterId.getAsString() : null;
     }
 
-    public static SpApiResponse volumeCreate(final String name, final String parentName, final Long size, String vmUuid, String vcPolicy, String csTag, SpConnectionDesc conn) {
+    public static SpApiResponse volumeCreate(final String name, final String parentName, final Long size, String vmUuid, String vcPolicy, String csTag, Long iops, SpConnectionDesc conn) {
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("name", "");
+        json.put("iops", iops);
         json.put("parent", parentName);
         json.put("size", size);
         json.put("template", conn.getTemplateName());
@@ -439,9 +440,12 @@ public class StorpoolUtil {
         return POST("MultiCluster/VolumeCreate", json, conn);
     }
 
-    public static SpApiResponse volumeCopy(final String name, final String baseOn, String csTag, SpConnectionDesc conn) {
+    public static SpApiResponse volumeCopy(final String name, final String baseOn, String csTag, Long iops, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
         json.put("baseOn", baseOn);
+        if (iops != null) {
+            json.put("iops", iops);
+        }
         Map<String, String> tags = StorPoolHelper.addStorPoolTags(name, null, csTag, null);
         json.put("tags", tags);
         return POST("MultiCluster/VolumeCreate", json, conn);
@@ -457,17 +461,19 @@ public class StorpoolUtil {
         return POST("MultiCluster/VolumeUpdate/" + name, json, conn);
     }
 
-    public static SpApiResponse volumeUpdate(final String name, final Long newSize, final Boolean shrinkOk, SpConnectionDesc conn) {
+    public static SpApiResponse volumeUpdate(final String name, final Long newSize, final Boolean shrinkOk, Long iops, SpConnectionDesc conn) {
         Map<String, Object> json = new HashMap<>();
+        json.put("iops", iops);
         json.put("size", newSize);
         json.put("shrinkOk", shrinkOk);
 
         return POST("MultiCluster/VolumeUpdate/" + name, json, conn);
     }
 
-    public static SpApiResponse volumeUpadateTags(final String name, final String uuid, SpConnectionDesc conn, String vcPolicy) {
+    public static SpApiResponse volumeUpadateTags(final String name, final String uuid, Long iops, SpConnectionDesc conn, String vcPolicy) {
          Map<String, Object> json = new HashMap<>();
          Map<String, String> tags = StorPoolHelper.addStorPoolTags(null, uuid, null, vcPolicy);
+         json.put("iops", iops);
          json.put("tags", tags);
          return POST("MultiCluster/VolumeUpdate/" + name, json, conn);
     }
