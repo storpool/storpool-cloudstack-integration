@@ -24,6 +24,8 @@ import javax.inject.Inject;
 
 import org.apache.cloudstack.engine.subsystem.api.storage.StrategyPriority;
 import org.apache.cloudstack.engine.subsystem.api.storage.VMSnapshotOptions;
+import org.apache.cloudstack.engine.subsystem.api.storage.VolumeDataFactory;
+import org.apache.cloudstack.engine.subsystem.api.storage.VolumeInfo;
 import org.apache.cloudstack.framework.config.dao.ConfigurationDao;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
@@ -119,6 +121,8 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
      VMSnapshotDetailsDao vmSnapshotDetailsDao;
      @Inject
      private VolumeDetailsDao volumeDetailsDao;
+     @Inject
+     VolumeDataFactory volFactory;
 
      @Override
      public VMSnapshot takeVMSnapshot(VMSnapshot vmSnapshot) {
@@ -375,6 +379,15 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                 if (resp.getError() != null) {
                     err = String.format("Create Could not complete revert task for volumeName=%s , and snapshotName=%s",volumeName, snapshotName);
                     throw new CloudRuntimeException(err);
+                }
+                VolumeInfo vinfo = volFactory.getVolume(volumeObjectTO.getId());
+                if (vinfo.getMaxIops() != null) {
+                    resp = StorpoolUtil.volumeUpadateTags(volumeName, null, vinfo.getMaxIops(), conn, null);
+
+                    if (resp.getError() != null) {
+                        StorpoolUtil.spLog("Volume was reverted successfully but max iops could not be set due to %s",
+                                resp.getError().getDescr());
+                    }
                 }
                 }
                answer = new StorpoolRevertToVMSnapshotAnswer(revertToSnapshotCommand, volumeTOs, null);
