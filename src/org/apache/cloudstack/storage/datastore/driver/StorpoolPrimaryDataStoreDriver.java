@@ -85,6 +85,7 @@ import com.cloud.storage.dao.VMTemplatePoolDao;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.tags.dao.ResourceTagDao;
 import com.cloud.utils.NumbersUtil;
+import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.VMInstanceVO;
 import com.cloud.vm.VirtualMachineManager;
 import com.cloud.vm.dao.VMInstanceDao;
@@ -401,22 +402,26 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
                     final String snapName = ((SnapshotInfo) srcData).getUuid();
                     SpConnectionDesc conn = new SpConnectionDesc(srcData.getDataStore().getUuid());
-                    Long clusterId = findClusterId(StorpoolUtil.getSnapshotClusterID(snapName, conn), srcData.getDataStore().getScope().getScopeId());
-                    EndPoint ep = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, dstData);
-                    if (ep == null) {
-                        err = "No remote endpoint to send command, check if host or ssvm is down?";
-                    } else {
-                        answer = ep.sendMessage(cmd);
-                        // if error during snapshot backup, cleanup the StorPool snapshot
-                        if (answer != null && !answer.getResult()) {
-                            StorpoolUtil.spLog(String.format("Error while backing-up snapshot '%s' - cleaning up StorPool snapshot. Error: %s", snapName, answer.getDetails()));
-                            SpApiResponse resp = StorpoolUtil.snapshotDelete(snapName, conn);
-                            if (resp.getError() != null) {
-                                final String err2 = String.format("Failed to cleanup StorPool snapshot '%s'. Error: %s.", snapName, resp.getError());
-                                log.error(err2);
-                                StorpoolUtil.spLog(err2);
+                    try {
+                        Long clusterId = findClusterId(StorpoolUtil.getSnapshotClusterID(snapName, conn));
+                        EndPoint ep = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, dstData);
+                        if (ep == null) {
+                            err = "No remote endpoint to send command, check if host or ssvm is down?";
+                        } else {
+                            answer = ep.sendMessage(cmd);
+                            // if error during snapshot backup, cleanup the StorPool snapshot
+                            if (answer != null && !answer.getResult()) {
+                                StorpoolUtil.spLog(String.format("Error while backing-up snapshot '%s' - cleaning up StorPool snapshot. Error: %s", snapName, answer.getDetails()));
+                                SpApiResponse resp = StorpoolUtil.snapshotDelete(snapName, conn);
+                                if (resp.getError() != null) {
+                                    final String err2 = String.format("Failed to cleanup StorPool snapshot '%s'. Error: %s.", snapName, resp.getError());
+                                    log.error(err2);
+                                    StorpoolUtil.spLog(err2);
+                                }
                             }
                         }
+                    } catch (CloudRuntimeException e) {
+                        err = e.getMessage();
                     }
                 }
             } else if (srcType == DataObjectType.VOLUME && dstType == DataObjectType.TEMPLATE) {
@@ -618,19 +623,23 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
                             StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc command=%s ", cmd);
 
-                            Long clusterId = findClusterId(StorpoolUtil.getSnapshotClusterID(tmpSnapName, conn), srcData.getDataStore().getScope().getScopeId());
-                            EndPoint ep = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, dstData);
-                            StorpoolUtil.spLog("selector.select(srcData, dstData) ", ep);
-                            if( ep == null ) {
-                                ep = selector.select(dstData);
-                                StorpoolUtil.spLog("selector.select(srcData) ", ep);
-                            }
+                            try {
+                                Long clusterId = findClusterId(StorpoolUtil.getSnapshotClusterID(tmpSnapName, conn));
+                                EndPoint ep = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, dstData);
+                                StorpoolUtil.spLog("selector.select(srcData, dstData) ", ep);
+                                if( ep == null ) {
+                                    ep = selector.select(dstData);
+                                    StorpoolUtil.spLog("selector.select(srcData) ", ep);
+                                }
 
-                            if (ep == null) {
-                                err = "No remote endpoint to send command, check if host or ssvm is down?";
-                            } else {
-                                answer = ep.sendMessage(cmd);
-                                StorpoolUtil.spLog("Answer: details=%s, result=%s", answer.getDetails(), answer.getResult());
+                                if (ep == null) {
+                                    err = "No remote endpoint to send command, check if host or ssvm is down?";
+                                } else {
+                                    answer = ep.sendMessage(cmd);
+                                    StorpoolUtil.spLog("Answer: details=%s, result=%s", answer.getDetails(), answer.getResult());
+                                }
+                            } catch (CloudRuntimeException e) {
+                                err = e.getMessage();
                             }
                         }
 
@@ -752,15 +761,21 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         completeResponse(to, callback);
     }
 
-    private Long findClusterId(String clusterId, Long zoneId) {
+    private Long findClusterId(String clusterId) {
         List<ClusterVO> clusterVo = clusterDao.listAll();
+        if (clusterVo.size() == 1) {
+            StorpoolUtil.spLog("There is only one cluster, sending backup to secondary command");
+            return null;
+        }
         for (ClusterVO clusterVO2 : clusterVo) {
-            StorpoolUtil.spLog("StorPool cluset id=%s, cluster id value=%s, equal=%s", clusterId, BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()), clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString()));
-            if (clusterId != null && clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString())) {
-                return clusterVO2.getId();
+            if (clusterId != null && BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()) != null) {
+                StorpoolUtil.spLog("StorPool cluster id=%s, cluster id value=%s, equal=%s", clusterId, BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()), clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString()));
+                if (clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString())) {
+                    return clusterVO2.getId();
+                }
             }
         }
-        return null;
+        throw new CloudRuntimeException("Could not find the right clusterId. to send command. To use snapshot backup to secondary for each CloudStack cluster in its settings set the value of StorPool's cluster-id in \"sp.cluster.id\".");
     }
 
     private HostVO findHostByCluster(Long clusterId) {
