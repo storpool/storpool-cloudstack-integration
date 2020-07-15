@@ -43,6 +43,7 @@ import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.storage.DataStoreRole;
 import com.cloud.utils.NumbersUtil;
+import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.VirtualMachineManager;
 
 @Component
@@ -104,27 +105,31 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
                     NumbersUtil.parseInt(value, Integer.parseInt(Config.BackupSnapshotWait.getDefaultValue())), VirtualMachineManager.ExecuteInSequence.value());
 
             final String snapName = ((SnapshotInfo) srcData).getUuid();
-            Long clusterId = findClusterId(StorpoolUtil.getSnapshotClusterID(snapName, conn), srcData.getDataStore().getScope().getScopeId());
-            EndPoint ep2 = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, destData);
-            if (ep2 == null) {
-                err = "No remote endpoint to send command, check if host or ssvm is down?";
-            } else {
-                answer = (CopyCmdAnswer) ep2.sendMessage(backupSnapshot);
-                if (answer != null && answer.getResult()) {
-                    SpApiResponse resSnapshot = StorpoolUtil.volumeFreeze(name, conn);
-                    if (resSnapshot.getError() != null) {
-                        log.debug(String.format("Could not snapshot volume with ID=%s", snapshot.getId()));
-                        StorpoolUtil.spLog("Volume freeze failed with error=%s", resSnapshot.getError().getDescr());
-                        err = resSnapshot.getError().getDescr();
+            try {
+                Long clusterId = findClusterId(StorpoolUtil.getSnapshotClusterID(snapName, conn), srcData.getDataStore().getScope().getScopeId());
+                EndPoint ep2 = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, destData);
+                if (ep2 == null) {
+                    err = "No remote endpoint to send command, check if host or ssvm is down?";
+                } else {
+                    answer = (CopyCmdAnswer) ep2.sendMessage(backupSnapshot);
+                    if (answer != null && answer.getResult()) {
+                        SpApiResponse resSnapshot = StorpoolUtil.volumeFreeze(name, conn);
+                        if (resSnapshot.getError() != null) {
+                            log.debug(String.format("Could not snapshot volume with ID=%s", snapshot.getId()));
+                            StorpoolUtil.spLog("Volume freeze failed with error=%s", resSnapshot.getError().getDescr());
+                            err = resSnapshot.getError().getDescr();
+                            StorpoolUtil.volumeDelete(name, conn);
+                        }
+                        else {
+                            updateVmStoreTemplate(template.getId(), template.getDataStore().getRole(), StorpoolUtil.devPath(name));
+                        }
+                    }else {
+                        err = "Could not copy template to secondary " + answer.getResult();
                         StorpoolUtil.volumeDelete(name, conn);
                     }
-                    else {
-                        updateVmStoreTemplate(template.getId(), template.getDataStore().getRole(), StorpoolUtil.devPath(name));
-                    }
-                }else {
-                    err = "Could not copy template to secondary " + answer.getResult();
-                    StorpoolUtil.volumeDelete(name, conn);
                 }
+            } catch (CloudRuntimeException e) {
+                err = e.getMessage();
             }
         }
         StorpoolUtil.spLog("StorPoolDataMotionStrategy.copyAsync Creating snapshot=%s for StorPool template=%s", name, conn.getTemplateName());
@@ -142,14 +147,19 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
 
     private Long findClusterId(String clusterId, Long zoneId) {
         List<ClusterVO> clusterVo = clusterDao.listAll();
+        if (clusterVo.size() == 1) {
+            StorpoolUtil.spLog("There is only one cluster, sending backup to secondary command");
+            return null;
+        }
         for (ClusterVO clusterVO2 : clusterVo) {
-            StorpoolUtil.spLog("StorPool cluset id=%s, cluster id value=%s, equal=%s", clusterId,
-                    BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()), clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString()));
-            if (clusterId != null && clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString())) {
-                return clusterVO2.getId();
+            if (clusterId != null && BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()) != null) {
+                StorpoolUtil.spLog("StorPool cluster id=%s, cluster id value=%s, equal=%s", clusterId, BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()), clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString()));
+                if (clusterId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString())) {
+                    return clusterVO2.getId();
+                }
             }
         }
-        return null;
+        throw new CloudRuntimeException("Could not find the right clusterId. To use snapshot backup to secondary for each CloudStack cluster in its settings set the value of StorPool's cluster-id in \"sp.cluster.id\".");
     }
 
     private HostVO findHostByCluster(Long clusterId) {
