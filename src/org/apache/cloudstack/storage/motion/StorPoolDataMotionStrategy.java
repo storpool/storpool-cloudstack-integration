@@ -1,6 +1,5 @@
 package org.apache.cloudstack.storage.motion;
 
-import java.util.List;
 import java.util.Map;
 
 import javax.inject.Inject;
@@ -38,10 +37,8 @@ import com.cloud.agent.api.storage.StorpoolBackupTemplateFromSnapshotCommand;
 import com.cloud.agent.api.to.DataObjectType;
 import com.cloud.agent.api.to.VirtualMachineTO;
 import com.cloud.configuration.Config;
-import com.cloud.dc.ClusterVO;
 import com.cloud.dc.dao.ClusterDao;
 import com.cloud.host.Host;
-import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.storage.DataStoreRole;
 import com.cloud.storage.VMTemplateDetailVO;
@@ -61,21 +58,21 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
     @Inject
     private DataStoreManager _dataStore;
     @Inject
-    private ConfigurationDao configDao;
+    private ConfigurationDao _configDao;
     @Inject
-    private EndPointSelector selector;
+    private EndPointSelector _selector;
     @Inject
-    private TemplateDataStoreDao templStoreDao;
+    private TemplateDataStoreDao _templStoreDao;
     @Inject
-    ClusterDao clusterDao;
+    private ClusterDao _clusterDao;
     @Inject
-    HostDao hostDao;
+    private HostDao _hostDao;
     @Inject
-    SnapshotDetailsDao snapshotDetailsDao;
+    private SnapshotDetailsDao _snapshotDetailsDao;
     @Inject
-    SnapshotDataStoreDao snapshotStoreDao;
+    private VMTemplateDetailsDao vmTemplateDetailsDao;
     @Inject
-    VMTemplateDetailsDao vmTemplateDetailsDao;
+    private SnapshotDataStoreDao _snapshotStoreDao;
 
     @Override
     public StrategyPriority canHandle(DataObject srcData, DataObject destData) {
@@ -83,14 +80,14 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
         DataObjectType dstType = destData.getType();
         if (srcType == DataObjectType.SNAPSHOT && dstType == DataObjectType.TEMPLATE && BackupManager.BypassSecondaryStorage.value()) {
             SnapshotInfo sinfo = (SnapshotInfo)srcData;
-            String snapshotName= StorPoolHelper.getSnapshotName(sinfo.getId(), sinfo.getUuid(), snapshotStoreDao, snapshotDetailsDao);
+            String snapshotName= StorPoolHelper.getSnapshotName(sinfo.getId(), sinfo.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
             StorpoolUtil.spLog("StorPoolDataMotionStrategy.canHandle snapshot name=%s", snapshotName);
             if(snapshotName != null && StorpoolUtil.snapshotExists(snapshotName, new SpConnectionDesc(srcData.getDataStore().getUuid()))){
                 return StrategyPriority.HIGHEST;
             }
-            SnapshotDetailsVO snapshotDetails = snapshotDetailsDao.findDetail(sinfo.getId(), sinfo.getUuid());
+            SnapshotDetailsVO snapshotDetails = _snapshotDetailsDao.findDetail(sinfo.getId(), sinfo.getUuid());
             if (snapshotDetails != null) {
-                snapshotDetailsDao.remove(snapshotDetails.getId());
+                _snapshotDetailsDao.remove(snapshotDetails.getId());
             }
         }
         return StrategyPriority.CANT_HANDLE;
@@ -114,7 +111,7 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
         String name = template.getUuid();
         String volumeName = "";
 
-        String parentName = StorPoolHelper.getSnapshotName(sInfo.getId(), sInfo.getUuid(), snapshotStoreDao, snapshotDetailsDao);
+        String parentName = StorPoolHelper.getSnapshotName(sInfo.getId(), sInfo.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
         //TODO volume tags cs - template
         SpApiResponse res = StorpoolUtil.volumeCreate(name, parentName, sInfo.getSize(), null, "no", "template", null, conn);
         CopyCmdAnswer answer = null;
@@ -125,18 +122,17 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
             err = res.getError().getDescr();
         } else {
             volumeName = StorpoolUtil.getNameFromResponse(res, true);
-            SnapshotDetailsVO snapshotDetails = snapshotDetailsDao.findDetail(sInfo.getId(), sInfo.getUuid());
+            SnapshotDetailsVO snapshotDetails = _snapshotDetailsDao.findDetail(sInfo.getId(), sInfo.getUuid());
 
             snapshot.setPath(snapshotDetails.getValue());
-            String value = configDao.getValue(Config.BackupSnapshotWait.toString());
+            String value = _configDao.getValue(Config.BackupSnapshotWait.toString());
             Command backupSnapshot = new StorpoolBackupTemplateFromSnapshotCommand(snapshot, template,
                     NumbersUtil.parseInt(value, Integer.parseInt(Config.BackupSnapshotWait.getDefaultValue())), VirtualMachineManager.ExecuteInSequence.value());
 
-            final String snapName = ((SnapshotInfo) srcData).getUuid();
             try {
             //final String snapName = StorpoolStorageAdaptor.getVolumeNameFromPath(((SnapshotInfo) srcData).getPath(), true);
-                Long clusterId = findClusterId(parentName);
-                EndPoint ep2 = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, destData);
+                Long clusterId = StorPoolHelper.findClusterIdByGlobalId(parentName, _clusterDao);
+                EndPoint ep2 = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(StorPoolHelper.findHostByCluster(clusterId, _hostDao)) : _selector.select(srcData, destData);
                 if (ep2 == null) {
                     err = "No remote endpoint to send command, check if host or ssvm is down?";
                 } else {
@@ -175,29 +171,9 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
         throw new UnsupportedOperationException("Unsupport operation to migrate virtual machine with volumes to another host");
     }
 
-    private Long findClusterId(String globalId) {
-        List<ClusterVO> clusterVo = clusterDao.listAll();
-        if (clusterVo.size() == 1) {
-            StorpoolUtil.spLog("There is only one cluster, sending backup to secondary command");
-            return null;
-        }
-        for (ClusterVO clusterVO2 : clusterVo) {
-            if (globalId != null && BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()) != null && globalId.contains(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString())) {
-                StorpoolUtil.spLog("StorPool globalId=%s cluster id=%s, cluster value=%s", globalId, BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()), globalId.equals(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString()));
-                return clusterVO2.getId();
-            }
-        }
-        throw new CloudRuntimeException("Could not find the right clusterId. To use snapshot backup to secondary for each CloudStack cluster in its settings set the value of StorPool's cluster-id in \"sp.cluster.id\".");
-    }
-
-    private HostVO findHostByCluster(Long clusterId) {
-        List<HostVO> host = hostDao.findByClusterId(clusterId);
-        return host != null ? host.get(0) : null;
-    }
-
     private void updateVmStoreTemplate(Long id, DataStoreRole role, String path) {
-        TemplateDataStoreVO templ = templStoreDao.findByTemplate(id, role);
+        TemplateDataStoreVO templ = _templStoreDao.findByTemplate(id, role);
         templ.setLocalDownloadPath(path);
-        templStoreDao.persist(templ);
+        _templStoreDao.persist(templ);
     }
 }

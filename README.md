@@ -122,7 +122,11 @@ Provider: select *StorPool*
 Managed: leave unchecked (currently ignored)
 Capacity Bytes: used for accounting purposes only. May be more or less than the actual StorPool template capacity.
 Capacity IOPS: currently not used (may use for max IOPS limitations on volumes from this pool).
-URL: enter name of the StorPool Template to use. At present one template can be used for at most one Storage Pool.
+URL: enter SP_API_HTTP=address:port;SP_AUTH_TOKEN=token;SP_TEMPLATE=template_name. At present one template can be used for at most one Storage Pool.
+
+SP_API_HTTP - address of StorPool Api
+SP_AUTH_TOKEN - StorPool's token
+SP_TEMPLATE - name of StorPool's template
 
 Storage Tags: If left blank, the StorPool storage plugin will use the pool name to create a corresponding storage tag.
 This storage tag may be used later, when defining service or disk offerings.
@@ -240,17 +244,65 @@ This storage tag may be used later, when defining service or disk offerings.
   <td>deletePhysicalDisk</td>
 </tr>
 <tr>
-  <td>&nbsp;</td>
+  <td>migrate VM/volume</td>
   <td>migrate VM/volume to another storage</td>
-  <td>NOT IMPLEMENTED</td>
-  <td>&nbsp;</td>
+  <td>management/management + agent</td>
+  <td>copyAsync (V => V)</td>
+</tr>
+<tr>
+  <td>VM snapshot</td>
+  <td>group snapshot of VM's disks</td>
+  <td>management</td>
+  <td>StorpoolVMSnapshotStrategy takeVMSnapshot</td>
+</tr>
+<tr>
+  <td>revert VM snapshot</td>
+  <td>revert group snapshot of VM's disks</td>
+  <td>management</td>
+  <td>StorpoolVMSnapshotStrategy revertVMSnapshot</td>
+</tr>
+<tr>
+  <td>delete VM snapshot</td>
+  <td>delete group snapshot of VM's disks</td>
+  <td>management</td>
+  <td>StorpoolVMSnapshotStrategy deleteVMSnapshot</td>
+</tr>
+<tr>
+  <td>VM vc_policy tag</td>
+  <td>vc_policy tag for all disks attached to VM</td>
+  <td>management</td>
+  <td>StorPoolCreateTagsCmd</td>
+</tr>
+<tr>
+  <td>delete VM vc_policy tag</td>
+  <td>remove vc_policy tag for all disks attached to VM</td>
+  <td>management</td>
+  <td>StorPoolDeleteTagsCmd</td>
 </tr>
 </table>
 
+>NOTE: When using multicluster for each CloudStack cluster in its settings set the value of StorPool's SP_CLUSTER_ID in "sp.cluster.id".
+>
+
+>NOTE: Secondary storage could be bypassed with Configuration setting "sp.bypass.secondary.storage" set to true. </br>
+In this case only snapshots won't be downloaded to secondary storage.
+>
+
+### Creating template from snapshot
+
+# If bypass option is enabled
+
+The snapshot exists only on PRIMARY (StorPool) storage. From this snapshot it will be created a template on SECONADRY and PRIMARY storages.
+
+# If bypass option is disabled 
+
+TODO: Maybe we should not use CloudStack functionality, and to use that one when bypass option is enabled
+
+This is independent of StorPool as snapshots exist on secondary.
 
 ### Creating ROOT volume from templates
 
-When creating the first volume based on the given template, the template is first downloaded (cached) to PRIMARY storage.
+When creating the first volume based on the given template, if snapshot of the template does not exists on StorPool it will be first downloaded (cached) to PRIMARY storage.
 This is mapped to a StorPool snapshot so, creating succecutive volumes from the same template does not incur additional 
 copying of data to PRIMARY storage.
 
@@ -267,10 +319,8 @@ DATA volumes are created by CloudStack the first time it is attached to a VM.
 
 ### Creating volume from snapshot
 
-We use the fact that the snapshot already exists on PRIMARY, so no data is copied.
-
-TODO: Currently volumes can be created only from StorPool snapshots that already exist on PRIMARY.
-TODO: Copy snapshots from SECONDARY to StorPool PRIMARY. Needed, when there is no corresponding StorPool snapshot.
+We use the fact that the snapshot already exists on PRIMARY, so no data is copied. We will copy snapshots from SECONDARY to StorPool PRIMARY,
+when there is no corresponding StorPool snapshot.
 
 ### Resizing volumes
 
@@ -280,31 +330,26 @@ the resize is visible by the VM.
 ### Creating snapshots
 
 The snapshot is first created on the PRIMARY storage (i.e. StorPool), then backed-up on SECONDARY storage
-(tested with NFS secondary). The original StorPool snapshot is kept, so that creating volumes from the snapshot does not need to copy
+(tested with NFS secondary) if bypass option is not enabled. The original StorPool snapshot is kept, so that creating volumes from the snapshot does not need to copy
 the data again to PRIMARY. When the snapshot is deleted from CloudStack so is the corresponding StorPool snapshot.
 
 TODO: Currently snapshots are taken in RAW format. Should we use QCOW2 instead?
 
-### Creating template from snapshot
-
-This is independent of StorPool as snapshots exist on secondary.
-
 ### Reverting volume to snapshot
 
-The volume is backed up to a temporary snapshot, then removed and recreated from the specified snapshot (the one to revert to).  The temporary snapshot is then removed.
+It's handled by StorPool
 
 ### Migrating volumes to other Storage pools
 
 Tested with storage pools on NFS only.
 
+### Virtual Machine Snapshot/Group Snapshot
+
+StorPool supports consistent snapshots of volumes attached to a virtual machine.
+
 ### BW/IOPS limitations
 
-TODO!
+Max IOPS are kept in StorPool's volumes with the help of custom service offerings, by adding IOPS limits to the
+corresponding system disk offering.
 
-May be enforced for ROOT volumes created from templates with the help of custom service offerings, by adding IOPS limits to the
-corresponding system disk offering. Thus, changing the disk offering in "volume resize", may provide a means to manage BW/IOPS
-for ROOT volumes.
-
-Currently CloudStack has min IOPS, which is NOT SUPPORTED by StorPool. Thus, min IOPS should always be set to 0. (?)
-
-CloudStack has no way to specify max BW. Do they want to be able to specify max BW, or IOPS limitation only is sufficient.
+CloudStack has no way to specify max BW. Do they want to be able to specify max BW only is sufficient.
