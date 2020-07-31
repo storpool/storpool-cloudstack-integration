@@ -5,17 +5,23 @@ import java.io.IOException;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
+import org.apache.cloudstack.storage.snapshot.BackupManager;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.log4j.Appender;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PatternLayout;
 import org.apache.log4j.RollingFileAppender;
 
+import com.cloud.dc.ClusterVO;
+import com.cloud.dc.dao.ClusterDao;
+import com.cloud.host.HostVO;
+import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.server.ResourceTag;
 import com.cloud.server.ResourceTag.ResourceObjectType;
@@ -26,6 +32,7 @@ import com.cloud.storage.dao.SnapshotDetailsVO;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.utils.db.TransactionLegacy;
 import com.cloud.tags.dao.ResourceTagDao;
+import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.VMInstanceVO;
 import com.cloud.vm.dao.VMInstanceDao;
 
@@ -142,5 +149,26 @@ public class StorPoolHelper {
         }else if (kindOfLog.equals("abandon")) {
             StorpoolUtil.spLog("You can find information about volumes and snapshots, for which CloudStack doesn't have information in %s log file", path);
         }
+    }
+
+
+    public static Long findClusterIdByGlobalId(String globalId, ClusterDao clusterDao) {
+        List<ClusterVO> clusterVo = clusterDao.listAll();
+        if (clusterVo.size() == 1) {
+            StorpoolUtil.spLog("There is only one cluster, sending backup to secondary command");
+            return null;
+        }
+        for (ClusterVO clusterVO2 : clusterVo) {
+            if (globalId != null && BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()) != null && globalId.contains(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString())) {
+                StorpoolUtil.spLog("Found cluster with id=%s for object with globalId=%s", clusterVO2.getId(), globalId);
+                return clusterVO2.getId();
+            }
+        }
+        throw new CloudRuntimeException("Could not find the right clusterId. to send command. To use snapshot backup to secondary for each CloudStack cluster in its settings set the value of StorPool's cluster-id in \"sp.cluster.id\".");
+    }
+
+    public static HostVO findHostByCluster(Long clusterId, HostDao hostDao) {
+        List<HostVO> host = hostDao.findByClusterId(clusterId);
+        return host != null ? host.get(0) : null;
     }
 }

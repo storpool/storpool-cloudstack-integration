@@ -44,11 +44,16 @@ import com.cloud.utils.fsm.NoTransitionException;
 public class StorpoolSnapshotStrategy extends XenserverSnapshotStrategy {
     private static final Logger log = Logger.getLogger(StorpoolSnapshotStrategy.class);
 
-    @Inject private SnapshotDao _snapshotDao;
-    @Inject private PrimaryDataStoreDao _primaryDataStoreDao;
-    @Inject private VolumeDao _volumeDao;
-    @Inject private SnapshotDataStoreDao _snapshotStoreDao;
-    @Inject private SnapshotDetailsDao _snapshotDetailsDao;
+    @Inject
+    private SnapshotDao _snapshotDao;
+    @Inject
+    private PrimaryDataStoreDao _primaryDataStoreDao;
+    @Inject
+    private VolumeDao _volumeDao;
+    @Inject
+    private SnapshotDataStoreDao _snapshotStoreDao;
+    @Inject
+    private SnapshotDetailsDao _snapshotDetailsDao;
 
     @Override
     public SnapshotInfo backupSnapshot(SnapshotInfo snapshotInfo) {

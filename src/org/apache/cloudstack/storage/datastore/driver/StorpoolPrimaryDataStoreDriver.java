@@ -18,7 +18,6 @@
  */
 package org.apache.cloudstack.storage.datastore.driver;
 
-import java.util.List;
 import java.util.Map;
 
 import javax.inject.Inject;
@@ -71,10 +70,8 @@ import com.cloud.agent.api.to.DataStoreTO;
 import com.cloud.agent.api.to.DataTO;
 import com.cloud.agent.api.to.StorageFilerTO;
 import com.cloud.configuration.Config;
-import com.cloud.dc.ClusterVO;
 import com.cloud.dc.dao.ClusterDao;
 import com.cloud.host.Host;
-import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.server.ResourceTag;
@@ -102,23 +99,34 @@ import com.cloud.vm.dao.VMInstanceDao;
 public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     private static final Logger log = Logger.getLogger(StorpoolPrimaryDataStoreDriver.class);
 
-    @Inject VolumeDao volumeDao;
-    @Inject StorageManager storageMgr;
-    @Inject PrimaryDataStoreDao primaryStoreDao;
-    @Inject EndPointSelector selector;
-    @Inject ConfigurationDao configDao;
-    @Inject VMTemplatePoolDao vmTemplatePoolDao;
-    @Inject TemplateDataStoreDao vmTemplateDataStoreDao;
-    @Inject VMInstanceDao vmInstanceDao;
-    @Inject ClusterDao clusterDao;
-    @Inject HostDao hostDao;
+    @Inject
+    private VolumeDao volumeDao;
+    @Inject
+    private StorageManager storageMgr;
+    @Inject
+    private PrimaryDataStoreDao primaryStoreDao;
+    @Inject
+    private EndPointSelector selector;
+    @Inject
+    private ConfigurationDao configDao;
+    @Inject
+    private VMTemplatePoolDao vmTemplatePoolDao;
+    @Inject
+    private TemplateDataStoreDao vmTemplateDataStoreDao;
+    @Inject
+    private VMInstanceDao vmInstanceDao;
+    @Inject
+    private ClusterDao clusterDao;
+    @Inject
+    private HostDao hostDao;
     @Inject
     private ResourceTagDao _resourceTagDao;
     @Inject
-    VMInstanceDao vmDao;
-    @Inject private SnapshotDetailsDao _snapshotDetailsDao;
-    @Inject private SnapshotDataStoreDao snapshotDataStoreDao;
-    @Inject VolumeDetailsDao volumeDetailsDao;
+    private SnapshotDetailsDao _snapshotDetailsDao;
+    @Inject
+    private SnapshotDataStoreDao snapshotDataStoreDao;
+    @Inject
+    private VolumeDetailsDao volumeDetailsDao;
 
     @Override
     public Map<String, String> getCapabilities() {
@@ -470,8 +478,8 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     final String snapName =  StorpoolStorageAdaptor.getVolumeNameFromPath(((SnapshotInfo) srcData).getPath(), true);
                     SpConnectionDesc conn = new SpConnectionDesc(srcData.getDataStore().getUuid());
                     try {
-                        Long clusterId = findClusterIdByGlobalId(snapName);
-                        EndPoint ep = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, dstData);
+                        Long clusterId = StorPoolHelper.findClusterIdByGlobalId(snapName, clusterDao);
+                        EndPoint ep = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(StorPoolHelper.findHostByCluster(clusterId, hostDao)) : selector.select(srcData, dstData);
                         if (ep == null) {
                             err = "No remote endpoint to send command, check if host or ssvm is down?";
                         } else {
@@ -702,8 +710,8 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                             StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc command=%s ", cmd);
 
                             try {
-                                Long clusterId = findClusterIdByGlobalId(snapshotName);
-                                EndPoint ep = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(findHostByCluster(clusterId)) : selector.select(srcData, dstData);
+                                Long clusterId = StorPoolHelper.findClusterIdByGlobalId(snapshotName, clusterDao);
+                                EndPoint ep = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(StorPoolHelper.findHostByCluster(clusterId, hostDao)) : selector.select(srcData, dstData);
                                 StorpoolUtil.spLog("selector.select(srcData, dstData) ", ep);
                                 if( ep == null ) {
                                     ep = selector.select(dstData);
@@ -835,26 +843,6 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
         final VolumeObjectTO to = (VolumeObjectTO)vinfo.getTO();
         completeResponse(to, callback);
-    }
-
-    private Long findClusterIdByGlobalId(String globalId) {
-        List<ClusterVO> clusterVo = clusterDao.listAll();
-        if (clusterVo.size() == 1) {
-            StorpoolUtil.spLog("There is only one cluster, sending backup to secondary command");
-            return null;
-        }
-        for (ClusterVO clusterVO2 : clusterVo) {
-            if (globalId != null && BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()) != null && globalId.contains(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString())) {
-                StorpoolUtil.spLog("Found cluster with id=%s for object with globalId=%s", clusterVO2.getId(), globalId);
-                return clusterVO2.getId();
-            }
-        }
-        throw new CloudRuntimeException("Could not find the right clusterId. to send command. To use snapshot backup to secondary for each CloudStack cluster in its settings set the value of StorPool's cluster-id in \"sp.cluster.id\".");
-    }
-
-    private HostVO findHostByCluster(Long clusterId) {
-        List<HostVO> host = hostDao.findByClusterId(clusterId);
-        return host != null ? host.get(0) : null;
     }
 
     private String getVcPolicyTag(Long vmId) {
