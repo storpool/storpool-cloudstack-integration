@@ -18,14 +18,18 @@
  */
 package org.apache.cloudstack.storage.datastore.lifecycle;
 
+import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import org.apache.log4j.Logger;
 
 import com.cloud.agent.api.StoragePoolInfo;
+import com.cloud.host.HostVO;
 import com.cloud.hypervisor.Hypervisor.HypervisorType;
+import com.cloud.resource.ResourceManager;
 import com.cloud.storage.Storage.StoragePoolType;
 import com.cloud.storage.ScopeType;
+import com.cloud.storage.StorageManager;
 import com.cloud.storage.StoragePool;
 import com.cloud.storage.StoragePoolAutomation;
 
@@ -46,9 +50,16 @@ import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDes
 public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycle {
     private static final Logger log = Logger.getLogger(StorpoolPrimaryDataStoreLifeCycle.class);
 
-    @Inject protected PrimaryDataStoreHelper dataStoreHelper;
-    @Inject protected StoragePoolAutomation storagePoolAutmation;
-    @Inject private PrimaryDataStoreDao _primaryDataStoreDao;
+    @Inject
+    protected PrimaryDataStoreHelper dataStoreHelper;
+    @Inject
+    protected StoragePoolAutomation storagePoolAutmation;
+    @Inject
+    private PrimaryDataStoreDao _primaryDataStoreDao;
+    @Inject
+    private ResourceManager resourceMgr;
+    @Inject
+    private StorageManager storageMgr;
 
     @Override
     public DataStore initialize(Map<String, Object> dsInfos) {
@@ -151,7 +162,14 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
         if (hypervisorType != HypervisorType.KVM) {
             throw new UnsupportedOperationException("Only KVM hypervisors supported!");
         }
-
+        List<HostVO> kvmHosts = resourceMgr.listAllUpAndEnabledHostsInOneZoneByHypervisor(HypervisorType.KVM, scope.getScopeId());
+        for (HostVO host : kvmHosts) {
+            try {
+                storageMgr.connectHostToSharedPool(host.getId(), dataStore.getId());
+            } catch (Exception e) {
+                log.warn(String.format("Unable to establish a connection between host %s and pool %s due to %s", host, dataStore, e));
+            }
+        }
         dataStoreHelper.attachZone(dataStore, hypervisorType);
         return true;
     }
