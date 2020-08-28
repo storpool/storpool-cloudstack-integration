@@ -20,18 +20,8 @@ package org.apache.cloudstack.storage.datastore.lifecycle;
 
 import java.util.List;
 import java.util.Map;
-import javax.inject.Inject;
-import org.apache.log4j.Logger;
 
-import com.cloud.agent.api.StoragePoolInfo;
-import com.cloud.host.HostVO;
-import com.cloud.hypervisor.Hypervisor.HypervisorType;
-import com.cloud.resource.ResourceManager;
-import com.cloud.storage.Storage.StoragePoolType;
-import com.cloud.storage.ScopeType;
-import com.cloud.storage.StorageManager;
-import com.cloud.storage.StoragePool;
-import com.cloud.storage.StoragePoolAutomation;
+import javax.inject.Inject;
 
 import org.apache.cloudstack.engine.subsystem.api.storage.ClusterScope;
 import org.apache.cloudstack.engine.subsystem.api.storage.DataStore;
@@ -39,11 +29,34 @@ import org.apache.cloudstack.engine.subsystem.api.storage.HostScope;
 import org.apache.cloudstack.engine.subsystem.api.storage.PrimaryDataStoreLifeCycle;
 import org.apache.cloudstack.engine.subsystem.api.storage.PrimaryDataStoreParameters;
 import org.apache.cloudstack.engine.subsystem.api.storage.ZoneScope;
-import org.apache.cloudstack.storage.volume.datastore.PrimaryDataStoreHelper;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
+import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
+import org.apache.cloudstack.storage.volume.datastore.PrimaryDataStoreHelper;
+import org.apache.log4j.Logger;
+
+import com.cloud.agent.api.StoragePoolInfo;
+import com.cloud.host.HostVO;
+import com.cloud.hypervisor.Hypervisor.HypervisorType;
+import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
+import com.cloud.resource.ResourceManager;
+import com.cloud.storage.ScopeType;
+import com.cloud.storage.SnapshotVO;
+import com.cloud.storage.Storage.StoragePoolType;
+import com.cloud.storage.StorageManager;
+import com.cloud.storage.StoragePool;
+import com.cloud.storage.StoragePoolAutomation;
+import com.cloud.storage.VMTemplateDetailVO;
+import com.cloud.storage.VMTemplateStoragePoolVO;
+import com.cloud.storage.dao.SnapshotDao;
+import com.cloud.storage.dao.SnapshotDetailsDao;
+import com.cloud.storage.dao.SnapshotDetailsVO;
+import com.cloud.storage.dao.VMTemplateDetailsDao;
+import com.cloud.storage.dao.VMTemplatePoolDao;
+import com.cloud.utils.exception.CloudRuntimeException;
+import com.cloud.vm.snapshot.dao.VMSnapshotDetailsDao;
 
 
 
@@ -60,6 +73,16 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
     private ResourceManager resourceMgr;
     @Inject
     private StorageManager storageMgr;
+    @Inject
+    private SnapshotDao snapshotDao;
+    @Inject
+    private SnapshotDetailsDao snapshotDetailsDao;
+    @Inject
+    private VMTemplatePoolDao vmTemplatePoolDao;
+    @Inject
+    private VMTemplateDetailsDao vmTemplateDetailsDao;
+    @Inject
+    private VMSnapshotDetailsDao vmSnapshotDetaildsDao;
 
     @Override
     public DataStore initialize(Map<String, Object> dsInfos) {
@@ -195,6 +218,44 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
     @Override
     public boolean deleteDataStore(DataStore store) {
         log.debug("deleteDataStore");
+        long storagePoolId = store.getId();
+
+        List<SnapshotVO> lstSnapshots = snapshotDao.listAll();
+
+        if (lstSnapshots != null) {
+            for (SnapshotVO snapshot : lstSnapshots) {
+                SnapshotDetailsVO snapshotDetails = snapshotDetailsDao.findDetail(snapshot.getId(), StorpoolUtil.SP_STORAGE_POOL_ID);
+
+                // if this snapshot belongs to the storagePool that was passed in
+                if (snapshotDetails != null && snapshotDetails.getValue() != null && Long.parseLong(snapshotDetails.getValue()) == storagePoolId) {
+                    throw new CloudRuntimeException("This primary storage cannot be deleted because it currently contains one or more snapshots.");
+                }
+            }
+        }
+
+        List<VMTemplateDetailVO> lstTemplateDetails = vmTemplateDetailsDao.listAll();
+
+        if (lstTemplateDetails != null) {
+            for (VMTemplateDetailVO vmTemplateDetailVO : lstTemplateDetails) {
+                if (vmTemplateDetailVO.getName().equals(StorpoolUtil.SP_STORAGE_POOL_ID) && Long.parseLong(vmTemplateDetailVO.getValue()) == storagePoolId) {
+                    throw new CloudRuntimeException("This primary storage cannot be deleted because it currently contains one or more template snapshots.");
+                }
+            }
+        }
+
+        List<VMTemplateStoragePoolVO> lstTemplatePoolRefs = vmTemplatePoolDao.listByPoolId(storagePoolId);
+
+        if (lstTemplatePoolRefs != null) {
+            for (VMTemplateStoragePoolVO templatePoolRef : lstTemplatePoolRefs) {
+                SpApiResponse resp = StorpoolUtil.snapshotDelete(
+                        StorpoolStorageAdaptor.getVolumeNameFromPath(templatePoolRef.getLocalDownloadPath(), true),
+                        new SpConnectionDesc(store.getUuid()));
+                if (resp.getError() != null) {
+                    throw new CloudRuntimeException(String.format("Could not delete StorPool's snapshot from template_spool_ref table due to %s", resp.getError()));
+                }
+                vmTemplatePoolDao.remove(templatePoolRef.getId());
+            }
+        }
         return dataStoreHelper.deletePrimaryDataStore(store);
     }
 
