@@ -188,11 +188,11 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                 result = true;
                 long new_chain_size = 0;
                 for (VolumeObjectTO volumeObjectTO : answer.getVolumeTOs()) {
-                    publishUsageEvent(EventTypes.EVENT_VM_SNAPSHOT_CREATE, vmSnapshot, userVm, volumeObjectTO);
+                    publishUsageEvents(EventTypes.EVENT_VM_SNAPSHOT_CREATE, vmSnapshot, userVm, volumeObjectTO);
                     new_chain_size += volumeObjectTO.getSize();
                     log.info("EventTypes.EVENT_VM_SNAPSHOT_CREATE publishUsageEvent" + volumeObjectTO);
                 }
-                publishUsageEvent(EventTypes.EVENT_VM_SNAPSHOT_ON_PRIMARY, vmSnapshot, userVm, new_chain_size - prev_chain_size, virtual_size);
+                publishUsageEvents(EventTypes.EVENT_VM_SNAPSHOT_ON_PRIMARY, vmSnapshot, userVm, new_chain_size - prev_chain_size, virtual_size);
             } else {
                 throw new CloudRuntimeException("Could not create vm snapshot");
             }
@@ -289,16 +289,11 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
         processAnswer(vmSnapshotVO, userVm, answer, hostId);
         long full_chain_size = 0;
         for (VolumeObjectTO volumeTo : answer.getVolumeTOs()) {
-            publishUsageEvent(EventTypes.EVENT_VM_SNAPSHOT_DELETE, vmSnapshot, userVm, volumeTo);
+            publishUsageEvents(EventTypes.EVENT_VM_SNAPSHOT_DELETE, vmSnapshot, userVm, volumeTo);
             full_chain_size += volumeTo.getSize();
         }
-        publishUsageEvent(EventTypes.EVENT_VM_SNAPSHOT_OFF_PRIMARY, vmSnapshot, userVm, full_chain_size, 0L);
+        publishUsageEvents(EventTypes.EVENT_VM_SNAPSHOT_OFF_PRIMARY, vmSnapshot, userVm, full_chain_size, 0L);
         return true;
-    }
-
-    @Override
-    public boolean deleteVMSnapshotFromDB(VMSnapshot vmSnapshot) {
-        return super.deleteVMSnapshotFromDB(vmSnapshot);
     }
 
     @Override
@@ -426,7 +421,7 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
         }
     }
 
-    private void publishUsageEvent(String type, VMSnapshot vmSnapshot, UserVm userVm, VolumeObjectTO volumeTo) {
+    private void publishUsageEvents(String type, VMSnapshot vmSnapshot, UserVm userVm, VolumeObjectTO volumeTo) {
         VolumeVO volume = volumeDao.findById(volumeTo.getId());
         Long diskOfferingId = volume.getDiskOfferingId();
         Long offeringId = null;
@@ -440,7 +435,7 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                 vmSnapshot.getName(), offeringId, volume.getId(), volumeTo.getSize(), VMSnapshot.class.getName(), vmSnapshot.getUuid());
     }
 
-    private void publishUsageEvent(String type, VMSnapshot vmSnapshot, UserVm userVm, Long vmSnapSize, Long virtualSize) {
+    private void publishUsageEvents(String type, VMSnapshot vmSnapshot, UserVm userVm, Long vmSnapSize, Long virtualSize) {
         try {
             UsageEventUtils.publishUsageEvent(type, vmSnapshot.getAccountId(), userVm.getDataCenterId(), userVm.getId(),
                     vmSnapshot.getName(), 0L, 0L, vmSnapSize, virtualSize, VMSnapshot.class.getName(),

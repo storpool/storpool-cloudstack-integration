@@ -332,7 +332,6 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
         throw new UnsupportedOperationException("Copying a disk is not supported in this configuration.");
     }
 
-    @Override
     public KVMPhysicalDisk createDiskFromSnapshot(KVMPhysicalDisk snapshot, String snapshotName, String name, KVMStoragePool destPool) {
         SP_LOG("StorpooolStorageAdaptor.createDiskFromSnapshot: snap=%s, snap_name=%s, name=%s, dst_pool=%s", snapshot, snapshotName, name, destPool.getUuid());
         throw new UnsupportedOperationException("Creating a disk from a snapshot is not supported in this configuration.");
@@ -348,5 +347,29 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
     public boolean createFolder(String uuid, String path) {
         SP_LOG("StorpooolStorageAdaptor.createFolder: uuid=%s, path=%s", uuid, path);
         throw new UnsupportedOperationException("A folder cannot be created in this configuration.");
+    }
+
+    public KVMPhysicalDisk createDiskFromSnapshot(KVMPhysicalDisk snapshot, String snapshotName, String name,
+            KVMStoragePool destPool, int timeout) {
+        SP_LOG("StorpooolStorageAdaptor.createDiskFromSnapshot: snap=%s, snap_name=%s, name=%s, dst_pool=%s", snapshot,
+                snapshotName, name, destPool.getUuid());
+        throw new UnsupportedOperationException(
+                "Creating a disk from a snapshot is not supported in this configuration.");
+    }
+
+    public KVMPhysicalDisk createDiskFromTemplateBacking(KVMPhysicalDisk template, String name,
+            PhysicalDiskFormat format, long size, KVMStoragePool destPool, int timeout) {
+        SP_LOG("StorpooolStorageAdaptor.createDiskFromTemplateBacking: template=%s, name=%s, dst_pool=%s", template,
+                name, destPool.getUuid());
+        throw new UnsupportedOperationException(
+                "Creating a disk from a template is not supported in this configuration.");
+    }
+
+    public KVMPhysicalDisk createTemplateFromDirectDownloadFile(String templateFilePath, KVMStoragePool destPool,
+            boolean isIso) {
+        SP_LOG("StorpooolStorageAdaptor.createTemplateFromDirectDownloadFile: templateFilePath=%s, dst_pool=%s",
+                templateFilePath, destPool.getUuid());
+        throw new UnsupportedOperationException(
+                "Creating a template from direct download is not supported in this configuration.");
     }
 }

@@ -1,13 +1,15 @@
 package org.apache.cloudstack.storage.datastore.util;
 
-import java.sql.PreparedStatement;
 import java.io.IOException;
+import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.cloudstack.framework.config.dao.ConfigurationDao;
+import org.apache.cloudstack.framework.config.impl.ConfigurationVO;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
@@ -28,19 +30,28 @@ import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.server.ResourceTag;
 import com.cloud.server.ResourceTag.ResourceObjectType;
 import com.cloud.storage.DataStoreRole;
+import com.cloud.storage.VMTemplateStoragePoolVO;
 import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.SnapshotDetailsDao;
 import com.cloud.storage.dao.SnapshotDetailsVO;
 import com.cloud.storage.dao.VolumeDao;
-import com.cloud.utils.db.TransactionLegacy;
 import com.cloud.tags.dao.ResourceTagDao;
+import com.cloud.utils.NumbersUtil;
+import com.cloud.utils.db.QueryBuilder;
+import com.cloud.utils.db.SearchCriteria.Op;
+import com.cloud.utils.db.TransactionLegacy;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.VMInstanceVO;
 import com.cloud.vm.dao.VMInstanceDao;
 
 public class StorPoolHelper {
+    public enum QualityOfServiceState { MIGRATION, NO_MIGRATION }
+
     private static final String UPDATE_SNAPSHOT_DETAILS_VALUE = "UPDATE `cloud`.`snapshot_details` SET value=? WHERE id=?";
     private static final String UPDATE_VOLUME_DETAILS_NAME = "UPDATE `cloud`.`volume_details` SET name=? WHERE id=?";
+    public static final String PrimaryStorageDownloadWait = "primary.storage.download.wait";
+    public static final String CopyVolumeWait = "copy.volume.wait";
+    public static final String BackupSnapshotWait = "backup.snapshot.wait";
 
     public static void updateVolumeInfo(VolumeObjectTO volumeObjectTO, Long size, SpApiResponse resp, VolumeDao volumeDao) {
         String volumePath = StorpoolUtil.devPath(StorpoolUtil.getNameFromResponse(resp, false));
@@ -185,5 +196,17 @@ public class StorPoolHelper {
     public static HostVO findHostByCluster(Long clusterId, HostDao hostDao) {
         List<HostVO> host = hostDao.findByClusterId(clusterId);
         return host != null ? host.get(0) : null;
+    }
+
+    public static int getTimeout(String cfg, ConfigurationDao configDao) {
+        final ConfigurationVO value = configDao.findByName(cfg);
+        return NumbersUtil.parseInt(value.getValue(),Integer.parseInt(value.getDefaultValue()));
+    }
+
+    public static VMTemplateStoragePoolVO findByPoolTemplate(long poolId, long templateId) {
+        QueryBuilder<VMTemplateStoragePoolVO> sc = QueryBuilder.create(VMTemplateStoragePoolVO.class);
+        sc.and(sc.entity().getPoolId(), Op.EQ, poolId);
+        sc.and(sc.entity().getTemplateId(), Op.EQ, templateId);
+        return sc.find();
     }
 }
