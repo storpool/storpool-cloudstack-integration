@@ -17,7 +17,6 @@
  * under the License.
  */
 package org.apache.cloudstack.storage.datastore.driver;
-
 import java.util.Map;
 
 import javax.inject.Inject;
@@ -47,6 +46,7 @@ import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreVO;
 import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
+import org.apache.cloudstack.storage.datastore.util.StorPoolHelper.QualityOfServiceState;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
@@ -69,7 +69,6 @@ import com.cloud.agent.api.to.DataObjectType;
 import com.cloud.agent.api.to.DataStoreTO;
 import com.cloud.agent.api.to.DataTO;
 import com.cloud.agent.api.to.StorageFilerTO;
-import com.cloud.configuration.Config;
 import com.cloud.dc.dao.ClusterDao;
 import com.cloud.host.Host;
 import com.cloud.host.dao.HostDao;
@@ -90,7 +89,6 @@ import com.cloud.storage.dao.VMTemplatePoolDao;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.storage.dao.VolumeDetailsDao;
 import com.cloud.tags.dao.ResourceTagDao;
-import com.cloud.utils.NumbersUtil;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.VirtualMachineManager;
 import com.cloud.vm.dao.VMInstanceDao;
@@ -369,11 +367,6 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         StorpoolUtil.spLog("%s: name=%s, size=%s, uuid=%s, type=%s, dstore=%s:%s:%s", pref, name, size, data.getUuid(), data.getType(), dstore.getUuid(), dstore.getName(), dstore.getRole());
     }
 
-    private int getTimeout(Config cfg) {
-        final String value = configDao.getValue(cfg.toString());
-        return NumbersUtil.parseInt(value, Integer.parseInt(cfg.getDefaultValue()));
-    }
-
     @Override
     public boolean canCopy(DataObject srcData, DataObject dstData) {
         return true;
@@ -420,7 +413,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         VolumeObjectTO dstTO = (VolumeObjectTO) dstData.getTO();
                         dstTO.setSize(size);
                         dstTO.setPath(StorpoolUtil.devPath(StorpoolUtil.getNameFromResponse(resp, false)));
-                        cmd = new StorpoolDownloadTemplateCommand(srcData.getTO(), dstTO, getTimeout(Config.PrimaryStorageDownloadWait), VirtualMachineManager.ExecuteInSequence.value(), "volume");
+                        cmd = new StorpoolDownloadTemplateCommand(srcData.getTO(), dstTO, StorPoolHelper.getTimeout(StorPoolHelper.PrimaryStorageDownloadWait, configDao), VirtualMachineManager.ExecuteInSequence.value(), "volume");
 
                         EndPoint ep = selector.select(srcData, dstData);
                         if (ep == null) {
@@ -473,7 +466,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     answer = new CopyCmdAnswer(snapshot);
                 } else {
                     // copy snapshot to secondary storage (backup snapshot)
-                    cmd = new StorpoolBackupSnapshotCommand(srcData.getTO(), dstData.getTO(), getTimeout(Config.BackupSnapshotWait), VirtualMachineManager.ExecuteInSequence.value());
+                    cmd = new StorpoolBackupSnapshotCommand(srcData.getTO(), dstData.getTO(), StorPoolHelper.getTimeout(StorPoolHelper.BackupSnapshotWait, configDao), VirtualMachineManager.ExecuteInSequence.value());
 
                     final String snapName =  StorpoolStorageAdaptor.getVolumeNameFromPath(((SnapshotInfo) srcData).getPath(), true);
                     SpConnectionDesc conn = new SpConnectionDesc(srcData.getDataStore().getUuid());
@@ -501,7 +494,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 }
             } else if (srcType == DataObjectType.VOLUME && dstType == DataObjectType.TEMPLATE) {
                 // create template from volume
-                cmd = new CopyCommand(srcData.getTO(), dstData.getTO(), getTimeout(Config.PrimaryStorageDownloadWait), VirtualMachineManager.ExecuteInSequence.value());
+                cmd = new CopyCommand(srcData.getTO(), dstData.getTO(), StorPoolHelper.getTimeout(StorPoolHelper.PrimaryStorageDownloadWait, configDao), VirtualMachineManager.ExecuteInSequence.value());
 
                 EndPoint ep = selector.select(srcData, dstData);
                 if (ep == null) {
@@ -554,7 +547,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         dstTO.setPath(StorpoolUtil.devPath(StorpoolUtil.getNameFromResponse(resp, false)));
                         dstTO.setSize(size);
 
-                        cmd = new StorpoolDownloadTemplateCommand(srcData.getTO(), dstTO, getTimeout(Config.PrimaryStorageDownloadWait), VirtualMachineManager.ExecuteInSequence.value(), "volume");
+                        cmd = new StorpoolDownloadTemplateCommand(srcData.getTO(), dstTO, StorPoolHelper.getTimeout(StorPoolHelper.PrimaryStorageDownloadWait, configDao), VirtualMachineManager.ExecuteInSequence.value(), "volume");
 
                         EndPoint ep = selector.select(srcData, dstData);
                         if (ep == null) {
@@ -594,7 +587,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 TemplateInfo tinfo = (TemplateInfo)srcData;
 
                 VolumeInfo vinfo = (VolumeInfo)dstData;
-                VMTemplateStoragePoolVO templStoragePoolVO = vmTemplatePoolDao.findByPoolTemplate(vinfo.getPoolId(), tinfo.getId());
+                VMTemplateStoragePoolVO templStoragePoolVO = StorPoolHelper.findByPoolTemplate(vinfo.getPoolId(), tinfo.getId());
                 final String parentName = templStoragePoolVO.getLocalDownloadPath() !=null ? StorpoolStorageAdaptor.getVolumeNameFromPath(templStoragePoolVO.getLocalDownloadPath(), true) : StorpoolStorageAdaptor.getVolumeNameFromPath(templStoragePoolVO.getInstallPath(), true);
                 final String name = vinfo.getUuid();
                 SpConnectionDesc conn = new SpConnectionDesc(vinfo.getDataStore().getUuid());
@@ -649,7 +642,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         dstTO.setPath(StorpoolUtil.devPath(StorpoolUtil.getNameFromResponse(resp, false)));
                         dstTO.setSize(size);
 
-                        cmd = new StorpoolDownloadVolumeCommand(srcData.getTO(), dstTO, getTimeout(Config.PrimaryStorageDownloadWait), VirtualMachineManager.ExecuteInSequence.value());
+                        cmd = new StorpoolDownloadVolumeCommand(srcData.getTO(), dstTO, StorPoolHelper.getTimeout(StorPoolHelper.PrimaryStorageDownloadWait, configDao), VirtualMachineManager.ExecuteInSequence.value());
 
                         EndPoint ep = selector.select(srcData, dstData);
 
@@ -705,7 +698,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         }else {
                             srcTO.setPath(StorpoolUtil.devPath(StorpoolUtil.getSnapshotNameFromResponse(resp, false, StorpoolUtil.GLOBAL_ID)));
 
-                            cmd = new StorpoolCopyVolumeToSecondaryCommand(srcTO, dstData.getTO(), getTimeout(Config.CopyVolumeWait), VirtualMachineManager.ExecuteInSequence.value());
+                            cmd = new StorpoolCopyVolumeToSecondaryCommand(srcTO, dstData.getTO(), StorPoolHelper.getTimeout(StorPoolHelper.CopyVolumeWait, configDao), VirtualMachineManager.ExecuteInSequence.value());
 
                             StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.copyAsnc command=%s ", cmd);
 
@@ -848,5 +841,9 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     private String getVcPolicyTag(Long vmId) {
         ResourceTag resourceTag = vmId != null ? _resourceTagDao.findByKey(vmId, ResourceObjectType.UserVm, StorpoolUtil.SP_VC_POLICY) : null;
         return resourceTag != null ? resourceTag.getValue() : null;
+    }
+
+    public void handleQualityOfServiceForVolumeMigration(VolumeInfo arg0, QualityOfServiceState arg1) {
+        StorpoolUtil.spLog("handleQualityOfServiceForVolumeMigration with volume name=%s", arg0.getName());
     }
 }

@@ -383,13 +383,13 @@ class TestResizeVolumes(cloudstackTestCase):
         """
         # Get all volumes to be migrated
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
 
         vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
 
@@ -418,7 +418,7 @@ class TestResizeVolumes(cloudstackTestCase):
             data_disk_1
         )
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
@@ -429,12 +429,12 @@ class TestResizeVolumes(cloudstackTestCase):
             self.volume
         )
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
 
@@ -460,12 +460,12 @@ class TestResizeVolumes(cloudstackTestCase):
             )
         # Migrate all volumes and VMs
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
 
@@ -480,12 +480,12 @@ class TestResizeVolumes(cloudstackTestCase):
 
         vol = self.resize_volume(apiclient = self.apiclient, volume = data_disk_1, shrinkOk = False, maxiops = 15000)
         # Migrate all volumes and VMs
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
 
@@ -502,12 +502,12 @@ class TestResizeVolumes(cloudstackTestCase):
         )
         # Migrate the VM and its volumes
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
 
@@ -533,12 +533,12 @@ class TestResizeVolumes(cloudstackTestCase):
         """
         # Get all volumes to be migrated
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
 
@@ -567,7 +567,7 @@ class TestResizeVolumes(cloudstackTestCase):
             data_disk_2
         )
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
@@ -578,7 +578,7 @@ class TestResizeVolumes(cloudstackTestCase):
             self.volume_2
         )
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
@@ -605,11 +605,11 @@ class TestResizeVolumes(cloudstackTestCase):
             )
         # Migrate all volumes and VMs
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
 
@@ -624,11 +624,11 @@ class TestResizeVolumes(cloudstackTestCase):
         vol = self.resize_volume(apiclient = self.apiclient, volume = data_disk_1, shrinkOk = False, maxiops = 15000)
 
         # Migrate all volumes and VMs
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
 
@@ -645,12 +645,12 @@ class TestResizeVolumes(cloudstackTestCase):
         )
         # Migrate the VM and its volumes
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
         vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         for v in vol_list:
             self.check_storpool_volume_iops(v)
 
@@ -752,13 +752,13 @@ class TestResizeVolumes(cloudstackTestCase):
         return destinationHost
 
     @classmethod
-    def get_destination_pools_hosts(self, vm):
+    def get_destination_pools_hosts(self, vm, hosts):
         vol_list = list_volumes(
             self.apiclient,
             virtualmachineid=vm.id,
             listall=True)
             # Get destination host
-        destinationHost = self.getDestinationHost(vm.hostid, self.host)
+        destinationHost = self.getDestinationHost(vm.hostid, hosts)
         return destinationHost, vol_list
 
     @classmethod

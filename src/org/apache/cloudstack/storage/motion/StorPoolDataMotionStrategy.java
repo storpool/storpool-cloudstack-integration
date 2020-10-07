@@ -36,7 +36,6 @@ import com.cloud.agent.api.Command;
 import com.cloud.agent.api.storage.StorpoolBackupTemplateFromSnapshotCommand;
 import com.cloud.agent.api.to.DataObjectType;
 import com.cloud.agent.api.to.VirtualMachineTO;
-import com.cloud.configuration.Config;
 import com.cloud.dc.dao.ClusterDao;
 import com.cloud.host.Host;
 import com.cloud.host.dao.HostDao;
@@ -45,7 +44,6 @@ import com.cloud.storage.VMTemplateDetailVO;
 import com.cloud.storage.dao.SnapshotDetailsDao;
 import com.cloud.storage.dao.SnapshotDetailsVO;
 import com.cloud.storage.dao.VMTemplateDetailsDao;
-import com.cloud.utils.NumbersUtil;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.VirtualMachineManager;
 
@@ -125,9 +123,8 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
             SnapshotDetailsVO snapshotDetails = _snapshotDetailsDao.findDetail(sInfo.getId(), sInfo.getUuid());
 
             snapshot.setPath(snapshotDetails.getValue());
-            String value = _configDao.getValue(Config.BackupSnapshotWait.toString());
             Command backupSnapshot = new StorpoolBackupTemplateFromSnapshotCommand(snapshot, template,
-                    NumbersUtil.parseInt(value, Integer.parseInt(Config.BackupSnapshotWait.getDefaultValue())), VirtualMachineManager.ExecuteInSequence.value());
+                    StorPoolHelper.getTimeout(StorPoolHelper.BackupSnapshotWait, _configDao), VirtualMachineManager.ExecuteInSequence.value());
 
             try {
             //final String snapName = StorpoolStorageAdaptor.getVolumeNameFromPath(((SnapshotInfo) srcData).getPath(), true);

@@ -56,7 +56,6 @@ import subprocess
 from storpool import spapi
 from marvin.configGenerator import configuration
 import uuid
-from __builtin__ import False
 
 class TestStoragePool(cloudstackTestCase):
 
@@ -596,7 +595,7 @@ class TestStoragePool(cloudstackTestCase):
         try:
             sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + storpoolGlId)
             if sp_snapshot is not None:
-                raise Exception(err)
+                raise Exception("Snapshot does not exists on Storpool name" + storpoolGlId)
         except spapi.ApiError as err:
                 self.debug("Do nothing the template has to be deleted")
         self._cleanup.append(snapshot)
@@ -690,7 +689,7 @@ class TestStoragePool(cloudstackTestCase):
             try:
                 sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + globalId)
                 if sp_snapshot is not None:
-                    raise Exception(err)
+                    raise Exception("Snapshot does not exists on Storpool name" + globalId)
             except spapi.ApiError as err:
                 self.debug("Do nothing the template has to be deleted")
         else:
@@ -715,13 +714,9 @@ class TestStoragePool(cloudstackTestCase):
         ''' Delete snapshot and template if volume is already deleted, not bypassing secondary
         '''
 
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "true"):
-            backup_config = Configurations.update(self.apiclient,
-            name = "sp.bypass.secondary.storage",
-            value = "false")
+        backup_config = Configurations.update(self.apiclient,
+        name = "sp.bypass.secondary.storage",
+        value = "false")
 
         volume = Volume.create(
             self.apiclient,
@@ -730,6 +725,7 @@ class TestStoragePool(cloudstackTestCase):
             diskofferingid = self.disk_offerings.id
             )
         delete = volume
+        self.virtual_machine2.stop(self.apiclient, forced=True)
         self.virtual_machine2.attach_volume(
             self.apiclient,
             volume
@@ -808,13 +804,9 @@ class TestStoragePool(cloudstackTestCase):
         ''' Delete snapshot and template if volume is already deleted, bypassing secondary
         '''
 
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "false"):
-            backup_config = Configurations.update(self.apiclient,
-            name = "sp.bypass.secondary.storage",
-            value = "true")
+        backup_config = Configurations.update(self.apiclient,
+        name = "sp.bypass.secondary.storage",
+        value = "true")
 
         volume = Volume.create(
             self.apiclient,

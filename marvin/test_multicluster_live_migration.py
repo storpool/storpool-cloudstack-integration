@@ -289,7 +289,7 @@ class TestLiveMigration(cloudstackTestCase):
         """
         # Get all volumes to be migrated
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         vm = self.migrateVm(self.virtual_machine, destinationHost)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -314,7 +314,7 @@ class TestLiveMigration(cloudstackTestCase):
             data_disk_1
         )
 
-        destinationHost, vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost, vol_list = self.get_destination_pools_hosts(vm, self.host)
         vm = self.migrateVm(self.virtual_machine, destinationHost)
 
 
@@ -323,7 +323,7 @@ class TestLiveMigration(cloudstackTestCase):
             self.volume
         )
 
-        destinationHost, vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost, vol_list = self.get_destination_pools_hosts(vm, self.host)
         vm = self.migrateVm(self.virtual_machine, destinationHost)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -348,7 +348,7 @@ class TestLiveMigration(cloudstackTestCase):
             )
         # Migrate all volumes and VMs
 
-        destinationHost, vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost, vol_list = self.get_destination_pools_hosts(vm, self.host)
         vm = self.migrateVm(self.virtual_machine, destinationHost)
 
 
@@ -365,7 +365,7 @@ class TestLiveMigration(cloudstackTestCase):
             diskofferingid=self.disk_offering_20.id
         )
         # Migrate all volumes and VMs
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
         vm = self.migrateVm(self.virtual_machine, destinationHost)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -381,7 +381,7 @@ class TestLiveMigration(cloudstackTestCase):
         )
         # Migrate the VM and its volumes
 
-        destinationHost, vol_list = self.get_destination_pools_hosts(vm)
+        destinationHost, vol_list = self.get_destination_pools_hosts(vm, self.host)
         vm = self.migrateVm(self.virtual_machine, destinationHost)
 
         cmd = destroyVirtualMachine.destroyVirtualMachineCmd()
@@ -406,7 +406,7 @@ class TestLiveMigration(cloudstackTestCase):
         """
         # Get all volumes to be migrated
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         vm2 = self.migrateVm(self.virtual_machine_on_remote, destinationHost)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -431,7 +431,7 @@ class TestLiveMigration(cloudstackTestCase):
             data_disk_2
         )
 
-        destinationHost, vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost, vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         vm2 = self.migrateVm(self.virtual_machine_on_remote, destinationHost)
 
 
@@ -440,7 +440,7 @@ class TestLiveMigration(cloudstackTestCase):
             self.volume_on_remote
         )
 
-        destinationHost, vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost, vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         vm2 = self.migrateVm(self.virtual_machine_on_remote, destinationHost)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -465,7 +465,7 @@ class TestLiveMigration(cloudstackTestCase):
             )
         # Migrate all volumes and VMs
 
-        destinationHost, vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost, vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         vm2 = self.migrateVm(self.virtual_machine_on_remote, destinationHost)
 
 
@@ -482,7 +482,7 @@ class TestLiveMigration(cloudstackTestCase):
             diskofferingid=self.disk_offering_20.id
         )
         # Migrate all volumes and VMs
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         vm2 = self.migrateVm(self.virtual_machine_on_remote, destinationHost)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -498,7 +498,7 @@ class TestLiveMigration(cloudstackTestCase):
         )
         # Migrate the VM and its volumes
 
-        destinationHost, vol_list = self.get_destination_pools_hosts(vm2)
+        destinationHost, vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
         vm2 = self.migrateVm(self.virtual_machine_on_remote, destinationHost)
 
         cmd = destroyVirtualMachine.destroyVirtualMachineCmd()
@@ -599,13 +599,13 @@ class TestLiveMigration(cloudstackTestCase):
         return destinationHost
 
     @classmethod
-    def get_destination_pools_hosts(self, vm):
+    def get_destination_pools_hosts(self, vm, hosts):
         vol_list = list_volumes(
             self.apiclient,
             virtualmachineid=vm.id,
             listall=True)
             # Get destination host
-        destinationHost = self.getDestinationHost(vm.hostid, self.host)
+        destinationHost = self.getDestinationHost(vm.hostid, hosts)
         return destinationHost, vol_list
 
     @classmethod

@@ -108,5 +108,11 @@
 				</configuration>
 			</plugin>
 		</plugins>
+    <resources>
+      <resource>
+        <directory>resources</directory>
+      </resource>
+    </resources>
+    <sourceDirectory>src</sourceDirectory>
 	</build>
 </project>
