@@ -45,6 +45,7 @@ import com.cloud.storage.dao.VolumeDetailsDao;
 import com.cloud.utils.component.ComponentContext;
 import com.cloud.utils.component.ManagerBase;
 import com.cloud.utils.concurrency.NamedThreadFactory;
+import com.cloud.utils.crypt.DBEncryptionUtil;
 import com.cloud.utils.db.QueryBuilder;
 import com.cloud.utils.db.SearchCriteria.Op;
 import com.cloud.utils.db.TransactionLegacy;
@@ -130,8 +131,8 @@ public class StorPoolMigrationToGlobalId extends ManagerBase {
                     _executorService.submit(new TemplatesOnPoolUpdater(storpoolSnapshots, templatesOnPool));
                     _executorService.shutdown();
                 }
-                configurationDao.update(BackupManager.IsMigrationCompleted.key(), Boolean.TRUE.toString());
             }
+            configurationDao.update(BackupManager.IsMigrationCompleted.key(), DBEncryptionUtil.encrypt(Boolean.TRUE.toString()));
         }
     }
 
