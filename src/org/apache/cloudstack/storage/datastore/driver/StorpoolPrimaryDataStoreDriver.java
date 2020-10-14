@@ -220,7 +220,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             SpConnectionDesc conn = new SpConnectionDesc(dataStore.getUuid());
 
             StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriver.createAsync volume: name=%s, uuid=%s, isAttached=%s vm=%s, payload=%s, template: %s", vinfo.getName(), vinfo.getUuid(), vinfo.isAttachedVM(), vinfo.getAttachedVmName(), vinfo.getpayload(), conn.getTemplateName());
-            SpApiResponse resp = StorpoolUtil.volumeCreate(name, null, size, null, null, "volume", vinfo.getMaxIops(), conn);
+            SpApiResponse resp = StorpoolUtil.volumeCreate(name, null, size, getVMInstanceUUID(vinfo.getInstanceId()), null, "volume", vinfo.getMaxIops(), conn);
             if (resp.getError() == null) {
                 String volumeName = StorpoolUtil.getNameFromResponse(resp, false);
                 path = StorpoolUtil.devPath(volumeName);
