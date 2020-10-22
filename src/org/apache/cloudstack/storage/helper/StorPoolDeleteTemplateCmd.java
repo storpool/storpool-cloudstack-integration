@@ -96,13 +96,18 @@ public class StorPoolDeleteTemplateCmd extends BaseAsyncCmd {
     @Override
     public void execute() {
         replaceCommands.ensureCmdHasRequiredValues(this.deleteTemplate, this);
-        TemplateInfo obj =  templateDataFactory.getReadyTemplateOnImageStore(this.deleteTemplate.getId(), this.deleteTemplate.getZoneId());
-        TemplateDataStoreVO template = templateDataStoreDao.findByTemplate(obj.getId(), obj.getDataStore().getRole());
         try {
+            TemplateInfo obj =  templateDataFactory.getReadyTemplateOnImageStore(this.deleteTemplate.getId(), this.deleteTemplate.getZoneId());
+            TemplateDataStoreVO template = new TemplateDataStoreVO();
+            if (obj != null) {
+                StorpoolUtil.spLog("DeleteTemplateCmd.execute deleting template with id %s from secondary storage", obj.getUuid());
+                template = templateDataStoreDao.findByTemplate(obj.getId(), obj.getDataStore().getRole());
+            }
+
             this.deleteTemplate.execute();
-            StorpoolUtil.spLog("DeleteTemplateCmd.execute template with id %s was deleted from secondary storage", obj.getUuid());
             this.setResponseObject(this.deleteTemplate.getResponseObject());
-            if (obj != null && template != null && template.getLocalDownloadPath() != null) {
+
+            if (template.getLocalDownloadPath() != null) {
                 SpConnectionDesc conn = new SpConnectionDesc(obj.getDataStore().getUuid());
                 if (StorpoolUtil.snapshotExists(StorpoolStorageAdaptor.getVolumeNameFromPath(template.getLocalDownloadPath(), true), conn)) {
                     SpApiResponse resp = StorpoolUtil.snapshotDelete(StorpoolStorageAdaptor.getVolumeNameFromPath(template.getLocalDownloadPath(), true), conn);
