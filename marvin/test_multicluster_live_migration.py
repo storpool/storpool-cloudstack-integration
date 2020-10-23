@@ -241,6 +241,17 @@ class TestLiveMigration(cloudstackTestCase):
             rootdisksize=10
         )
 
+        cls.virtual_machine_migr_btw_cl = VirtualMachine.create(
+            cls.apiclient,
+            {"name":"StorPool-%s" % uuid.uuid4() },
+            zoneid=cls.zone.id,
+            templateid=template.id,
+            serviceofferingid=cls.service_offering.id,
+            hypervisor=cls.hypervisor,
+            hostid = cls.host_on_local_1.id,
+            rootdisksize=10
+        )
+
         cls.template = template
         cls.random_data_0 = random_gen(size=100)
         cls.test_dir = "/tmp"
@@ -505,6 +516,24 @@ class TestLiveMigration(cloudstackTestCase):
         cmd.id = self.virtual_machine_on_remote.id
         cmd.expunge = True
         self.apiclient.destroyVirtualMachine(cmd)
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_11_migrate_vm_live_between_clusters(self):
+        cloudstackversion = Configurations.listCapabilities(self.apiclient).cloudstackversion
+        cloudstackversion = cloudstackversion.split(".")
+        if int(cloudstackversion[1]) < 12:
+            return
+        
+        destinationHost = self.getDestinationHost(self.virtual_machine_migr_btw_cl.hostid, self.host_remote)
+        # Migrate the VM
+        vm = self.migrateVm(self.virtual_machine_migr_btw_cl, destinationHost)
+        # self.check_files(vm,destinationHost)
+
+        cmd = destroyVirtualMachine.destroyVirtualMachineCmd()
+        cmd.id = self.virtual_machine_migr_btw_cl.id
+        cmd.expunge = True
+        self.apiclient.destroyVirtualMachine(cmd)
+
 
     @classmethod
     def get_local_cluster(cls):

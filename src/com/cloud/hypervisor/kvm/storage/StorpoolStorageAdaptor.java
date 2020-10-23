@@ -17,8 +17,10 @@
 package com.cloud.hypervisor.kvm.storage;
 
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -26,17 +28,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.cloud.storage.Storage;
+import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
+import org.apache.cloudstack.utils.qemu.QemuImg.PhysicalDiskFormat;
 import org.apache.log4j.Logger;
 
-import org.apache.cloudstack.utils.qemu.QemuImg.PhysicalDiskFormat;
-
+import com.cloud.agent.api.to.DiskTO;
+import com.cloud.storage.Storage;
 import com.cloud.storage.Storage.ProvisioningType;
 import com.cloud.storage.Storage.StoragePoolType;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.script.OutputInterpreter;
 import com.cloud.utils.script.Script;
-import com.cloud.agent.api.to.DiskTO;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 @StorageAdaptorInfo(storagePoolType=StoragePoolType.SharedMountPoint)
 public class StorpoolStorageAdaptor implements StorageAdaptor {
@@ -54,6 +59,9 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
     private static final Logger log = Logger.getLogger(StorpoolStorageAdaptor.class);
 
     private static final Map<String, KVMStoragePool> storageUuidToStoragePool = new HashMap<String, KVMStoragePool>();
+
+    private static final int gitBuildVersionMajor = gitBuildVersionMajor();
+
 
     @Override
     public KVMStoragePool createStoragePool(String uuid, String host, int port, String path, String userInfo, StoragePoolType storagePoolType) {
@@ -142,7 +150,7 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
             return false;
         }
 
-        SP_LOG("StorpooolStorageAdaptor.attachOrDetachVolume: cmd=%s, type=%s, uuid=%s, name=%s", command, type, volumeUuid, name);
+        SP_LOG("StorpooolStorageAdaptor.attachOrDetachVolume: cmd=%s, type=%s, uuid=%s, name=%s, buildVersion=%s", command, type, volumeUuid, name, gitBuildVersionMajor);
 
         final int numTries = 10;
         final int sleepTime = 1000;
@@ -154,9 +162,9 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
             sc.add(command);
             sc.add(type, name);
             sc.add("here");
-            if( command.equals("attach") ) {
+            if( command.equals("attach")) {
                 sc.add("onRemoteAttached");
-                sc.add("detachForce");
+                sc.add(gitBuildVersionMajor < 12 ? "detachForce" : "export");
             }
 
             OutputInterpreter.OneLineParser parser = new OutputInterpreter.OneLineParser();
@@ -371,5 +379,32 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
                 templateFilePath, destPool.getUuid());
         throw new UnsupportedOperationException(
                 "Creating a template from direct download is not supported in this configuration.");
+    }
+
+    private static int gitBuildVersionMajor() {
+        //if we fail on parsing or getting the version will return that the version is 12, because on volume attach is better to do "export" than "detachForce"
+        int version = 12;
+        try {
+            final ClassLoader classLoader = StorpoolUtil.class.getClassLoader();
+            final BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(classLoader.getResourceAsStream("git.properties")));
+            final JsonElement jsonElement = new JsonParser().parse(bufferedReader);
+            final JsonObject obj = jsonElement.getAsJsonObject();
+            final String gitCommitIdDescribeShort = obj.getAsJsonPrimitive("git.commit.id.describe-short").getAsString();
+            final String gitBuildTime = obj.getAsJsonPrimitive("git.build.time").getAsString();
+            final String gitBuildVersion = obj.getAsJsonPrimitive("git.build.version").getAsString();
+            log.info(String.format("StorPool-Cloudstack-Integration version: %s, build timestamp: %s, git describe: %s", gitBuildVersion, gitBuildTime, gitCommitIdDescribeShort));
+            if (gitBuildVersion != null) {
+                try {
+                    version = Integer.valueOf(gitBuildVersion.split("\\.")[1]);
+                } catch (NumberFormatException e) {
+                    SP_LOG("Could not get version of CloudStack %s, due to %s, will use version detachForce on remote, when attaching volume", gitBuildVersion, e.getMessage());
+                    return version;
+                }
+            }
+            return version;
+        } catch (Exception e) {
+            log.warn("readGitPropertiesJson: " + e.getMessage());
+            return version;
+        }
     }
 }
