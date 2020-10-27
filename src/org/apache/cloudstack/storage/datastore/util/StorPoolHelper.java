@@ -18,6 +18,8 @@ import org.apache.log4j.Logger;
 import org.apache.log4j.PatternLayout;
 import org.apache.log4j.RollingFileAppender;
 
+import com.cloud.dc.ClusterDetailsDao;
+import com.cloud.dc.ClusterDetailsVO;
 import com.cloud.dc.ClusterVO;
 import com.cloud.dc.dao.ClusterDao;
 import com.cloud.host.HostVO;
@@ -151,6 +153,19 @@ public class StorPoolHelper {
         }
     }
 
+    public static void setSpClusterIdIfNeeded(long hostId, String clusterId, ClusterDao clusterDao, HostDao hostDao, ClusterDetailsDao clusterDetails) {
+        HostVO host = hostDao.findById(hostId);
+        if (host != null && host.getClusterId() != null) {
+            ClusterVO cluster = clusterDao.findById(host.getClusterId());
+            ClusterDetailsVO clusterDetailsVo = clusterDetails.findDetail(cluster.getId(), BackupManager.StorPoolClusterId.key());
+            if (clusterDetailsVo == null) {
+                clusterDetails.persist(new ClusterDetailsVO(cluster.getId(), BackupManager.StorPoolClusterId.key(), clusterId));
+            } else if (clusterDetailsVo.getValue() == null || !clusterDetailsVo.getValue().equals(clusterId)) {
+                clusterDetailsVo.setValue(clusterId);
+                clusterDetails.update(clusterDetailsVo.getId(), clusterDetailsVo);
+            }
+        }
+    }
 
     public static Long findClusterIdByGlobalId(String globalId, ClusterDao clusterDao) {
         List<ClusterVO> clusterVo = clusterDao.listAll();
