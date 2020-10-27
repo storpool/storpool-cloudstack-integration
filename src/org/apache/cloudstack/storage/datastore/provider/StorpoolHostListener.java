@@ -23,20 +23,24 @@ import java.util.List;
 
 import javax.inject.Inject;
 
-import org.apache.log4j.Logger;
-
 import org.apache.cloudstack.engine.subsystem.api.storage.DataStoreManager;
 import org.apache.cloudstack.engine.subsystem.api.storage.HypervisorHostListener;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
+import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
+import org.apache.log4j.Logger;
 
 import com.cloud.agent.AgentManager;
 import com.cloud.agent.api.Answer;
 import com.cloud.agent.api.ModifyStoragePoolAnswer;
 import com.cloud.agent.api.ModifyStoragePoolCommand;
+import com.cloud.agent.api.storage.StorPoolGetSpClusterIdCommand;
 import com.cloud.alert.AlertManager;
+import com.cloud.dc.ClusterDetailsDao;
+import com.cloud.dc.dao.ClusterDao;
 import com.cloud.exception.StorageConflictException;
+import com.cloud.host.dao.HostDao;
 import com.cloud.storage.DataStoreRole;
 import com.cloud.storage.StoragePool;
 import com.cloud.storage.StoragePoolHostVO;
@@ -47,11 +51,22 @@ import com.cloud.utils.exception.CloudRuntimeException;
 public class StorpoolHostListener implements HypervisorHostListener {
     private static final Logger log = Logger.getLogger(StorpoolHostListener .class);
 
-    @Inject AgentManager agentMgr;
-    @Inject DataStoreManager dataStoreMgr;
-    @Inject AlertManager alertMgr;
-    @Inject StoragePoolHostDao storagePoolHostDao;
-    @Inject PrimaryDataStoreDao primaryStoreDao;
+    @Inject
+    private AgentManager agentMgr;
+    @Inject
+    private DataStoreManager dataStoreMgr;
+    @Inject
+    private AlertManager alertMgr;
+    @Inject
+    private StoragePoolHostDao storagePoolHostDao;
+    @Inject
+    private PrimaryDataStoreDao primaryStoreDao;
+    @Inject
+    private HostDao hostDao;
+    @Inject
+    private ClusterDao clusterDao;
+    @Inject
+    private ClusterDetailsDao clusterDetailsDao;
 
     @Override
     public boolean hostConnect(long hostId, long poolId) throws StorageConflictException {
@@ -93,6 +108,11 @@ public class StorpoolHostListener implements HypervisorHostListener {
             poolHost.setLocalPath(mspAnswer.getPoolInfo().getLocalPath().replaceAll("//", "/"));
         }
 
+        Answer getClusterIdAns = agentMgr.easySend(hostId, new StorPoolGetSpClusterIdCommand());
+
+        if (getClusterIdAns.getResult()) {
+            StorPoolHelper.setSpClusterIdIfNeeded(hostId, getClusterIdAns.getDetails(), clusterDao, hostDao, clusterDetailsDao);
+        }
         log.info("Connection established between storage pool " + pool + " and host " + hostId);
         return true;
     }
