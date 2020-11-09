@@ -23,11 +23,17 @@ import com.cloud.agent.api.to.StorageFilerTO;
 
 
 public class StorpoolResizeVolumeCommand extends ResizeVolumeCommand {
+    protected boolean isAttached;
     protected StorpoolResizeVolumeCommand() {
         super();
     }
 
-    public StorpoolResizeVolumeCommand(String path, StorageFilerTO pool, Long currentSize, Long newSize, boolean shrinkOk, String vmInstance) {
+    public StorpoolResizeVolumeCommand(String path, StorageFilerTO pool, Long currentSize, Long newSize, boolean shrinkOk, String vmInstance, boolean isAttached) {
         super(path, pool, currentSize, newSize, shrinkOk, vmInstance);
+        this.isAttached = isAttached;
+    }
+
+    public boolean isAttached() {
+        return isAttached;
     }
 }

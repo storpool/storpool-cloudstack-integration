@@ -19,6 +19,7 @@ package com.cloud.hypervisor.kvm.storage;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
@@ -99,20 +100,27 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
     private static long getDeviceSize(final String devPath) {
         SP_LOG("StorpooolStorageAdaptor.getDeviceSize: path=%s", devPath);
 
-        Script sc = new Script("blockdev", 0, log);
-        sc.add("--getsize64", devPath);
+        if (getVolumeNameFromPath(devPath, true) != null) {
+            File file = new File(devPath);
+            if (!file.exists()) {
+                return 0;
+            }
+            Script sc = new Script("blockdev", 0, log);
+            sc.add("--getsize64", devPath);
 
-        OutputInterpreter.OneLineParser parser = new OutputInterpreter.OneLineParser();
+            OutputInterpreter.OneLineParser parser = new OutputInterpreter.OneLineParser();
 
-        String res = sc.execute(parser);
-        if (res != null) {
-            SP_LOG("Unable to retrieve device size for %s. Res: %s", devPath, res);
+            String res = sc.execute(parser);
+            if (res != null) {
+                SP_LOG("Unable to retrieve device size for %s. Res: %s", devPath, res);
 
-            log.debug(String.format("Unable to retrieve device size for %s. Res: %s", devPath, res));
-            return 0;
+                log.debug(String.format("Unable to retrieve device size for %s. Res: %s", devPath, res));
+                return 0;
+            }
+
+            return Long.parseLong(parser.getLine());
         }
-
-        return Long.parseLong(parser.getLine());
+        return 0;
     }
 
     private static boolean waitForDeviceSymlink(String devPath) {
@@ -235,8 +243,6 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
         SP_LOG("StorpooolStorageAdaptor.getPhysicalDisk: uuid=%s, pool=%s", volumeUuid, pool);
 
         log.debug(String.format("getPhysicalDisk: uuid=%s, pool=%s", volumeUuid, pool));
-
-        attachOrDetachVolume("attach", "volume", volumeUuid);
 
         final long deviceSize = getDeviceSize(volumeUuid);
 

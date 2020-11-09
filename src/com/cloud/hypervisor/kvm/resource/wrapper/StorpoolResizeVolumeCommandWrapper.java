@@ -28,6 +28,7 @@ import com.cloud.hypervisor.kvm.resource.LibvirtComputingResource;
 import com.cloud.hypervisor.kvm.storage.KVMPhysicalDisk;
 import com.cloud.hypervisor.kvm.storage.KVMStoragePool;
 import com.cloud.hypervisor.kvm.storage.KVMStoragePoolManager;
+import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.resource.CommandWrapper;
 import com.cloud.resource.ResourceWrapper;
 import com.cloud.utils.script.Script;
@@ -46,6 +47,7 @@ public final class StorpoolResizeVolumeCommandWrapper extends CommandWrapper<Sto
         final String vmInstanceName = command.getInstanceName();
         final boolean shrinkOk = command.getShrinkOk();
         final StorageFilerTO spool = command.getPool();
+        String volPath = null;
 
         if (currentSize == newSize) {
             // nothing to do
@@ -59,7 +61,10 @@ public final class StorpoolResizeVolumeCommandWrapper extends CommandWrapper<Sto
 
             final KVMPhysicalDisk vol = pool.getPhysicalDisk(volid);
             final String path = vol.getPath();
-
+            volPath = path;
+            if (!command.isAttached()) {
+                StorpoolStorageAdaptor.attachOrDetachVolume("attach", "volume", path);
+            }
             final Script resizecmd = new Script(libvirtComputingResource.getResizeVolumePath(), libvirtComputingResource.getCmdsTimeout(), s_logger);
             resizecmd.add("-s", String.valueOf(newSize));
             resizecmd.add("-c", String.valueOf(currentSize));
@@ -84,6 +89,10 @@ public final class StorpoolResizeVolumeCommandWrapper extends CommandWrapper<Sto
             final String error = "Failed to resize volume: " + e.getMessage();
             s_logger.debug(error);
             return new ResizeVolumeAnswer(command, false, error);
+        } finally {
+            if (!command.isAttached() && volPath != null) {
+                StorpoolStorageAdaptor.attachOrDetachVolume("detach", "volume", volPath);
+            }
         }
     }
 }
