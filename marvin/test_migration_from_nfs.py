@@ -184,6 +184,14 @@ class TestStoragePool(cloudstackTestCase):
             hypervisor= cls.hypervisor,
             rootdisksize=10
             )
+        cls.vm3 = VirtualMachine.create(cls.apiclient,
+            {"name":"StorPool-%s" % uuid.uuid4() },
+            zoneid=cls.zone.id,
+            templateid=template.id,
+            serviceofferingid=nfs_service_offering.id,
+            hypervisor= cls.hypervisor,
+            rootdisksize=10
+            )
         cls.storage_pool = StoragePool.update(cls.apiclient,
                                               id=cls.storage_pool.id,
                                               tags = ["ssd, nfs"])
@@ -213,7 +221,7 @@ class TestStoragePool(cloudstackTestCase):
         cls._cleanup = []
         cls._cleanup.append(cls.vm)
         cls._cleanup.append(cls.vm2)
-
+        cls._cleanup.append(cls.vm3)
         return
 
     @classmethod
@@ -289,3 +297,104 @@ class TestStoragePool(cloudstackTestCase):
                 sp_volume = self.spapi.volumeList(volumeName="~" + name)
             except spapi.ApiError as err:
                 raise Exception(err)
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_3_migrate_volume_from_nfs_to_storpool(self):
+        '''Test write on disk before migrating volume from NFS primary storage
+         to StorPool and create template from volume.
+         Check that data is on disk after migration'''
+
+        try:
+            # Login to VM and write data to file system
+            ssh_client = self.vm3.get_ssh_client(reconnect = True)
+
+            cmds = [
+                "echo %s > %s/%s" %
+                (self.random_data_0, self.test_dir, self.random_data),
+                "sync",
+                "sleep 1",
+                "sync",
+                "sleep 1",
+                "cat %s/%s" %
+                (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      self.vm3.ipaddress)
+        self.assertEqual(
+            self.random_data_0,
+            result[0],
+            "Check the random data has be write into temp file!"
+        )
+
+        time.sleep(30)
+
+        self.vm3.stop(self.apiclient, forced=True)
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.vm3.id
+            )
+        for v in volumes:
+            cmd = migrateVolume.migrateVolumeCmd()
+            cmd.storageid = self.storage_pool.id
+            cmd.volumeid = v.id
+            volume =  self.apiclient.migrateVolume(cmd)
+            self.assertEqual(volume.storageid, self.storage_pool.id, "Did not migrate volume from NFS to StorPool")
+
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.vm3.id
+            )
+        for v in volumes:
+            name = v.path.split("/")[3]
+            try:
+                sp_volume = self.spapi.volumeList(volumeName="~" + name)
+            except spapi.ApiError as err:
+                raise Exception(err)
+
+        services = {"displaytext": "Template-1", "name": "Template-1-name", "ostypeid": self.template.ostypeid, "ispublic": "true"}
+
+        template = Template.create_from_volume(self.apiclient, volumes[0], services)
+
+        virtual_machine = VirtualMachine.create(self.apiclient,
+            {"name":"StorPool-%s" % uuid.uuid4() },
+            zoneid=self.zone.id,
+            templateid=template.id,
+            serviceofferingid=self.service_offering.id,
+            hypervisor=self.hypervisor,
+            rootdisksize=10
+            )
+
+        try:
+            ssh_client = virtual_machine.get_ssh_client(reconnect=True)
+
+            cmds = [
+                "cat %s/%s" % (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      virtual_machine.ipaddress)
+
+        self.assertEqual(
+            self.random_data_0,
+            result[0],
+            "Check the random data is equal with the ramdom file!"
+        )
+
+        self.assertIsNotNone(template, "Template is None")
+        self.assertIsInstance(template, Template, "Template is instance of template")
+        self._cleanup.append(template)
+        self._cleanup.append(virtual_machine)

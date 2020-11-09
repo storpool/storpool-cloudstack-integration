@@ -21,7 +21,6 @@ import org.apache.cloudstack.storage.RemoteHostEndPoint;
 import org.apache.cloudstack.storage.command.CopyCmdAnswer;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreDao;
-import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreVO;
 import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
@@ -39,7 +38,6 @@ import com.cloud.agent.api.to.VirtualMachineTO;
 import com.cloud.dc.dao.ClusterDao;
 import com.cloud.host.Host;
 import com.cloud.host.dao.HostDao;
-import com.cloud.storage.DataStoreRole;
 import com.cloud.storage.VMTemplateDetailVO;
 import com.cloud.storage.dao.SnapshotDetailsDao;
 import com.cloud.storage.dao.SnapshotDetailsVO;
@@ -144,7 +142,7 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
                             StorpoolUtil.volumeDelete(volumeName, conn);
                         }
                         else {
-                            updateVmStoreTemplate(template.getId(), template.getDataStore().getRole(), StorpoolUtil.devPath(StorpoolUtil.getNameFromResponse(res, false)));
+                            StorPoolHelper.updateVmStoreTemplate(template.getId(), template.getDataStore().getRole(), StorpoolUtil.devPath(StorpoolUtil.getNameFromResponse(res, false)), _templStoreDao);
                         }
                     }else {
                         err = "Could not copy template to secondary " + answer.getResult();
@@ -167,11 +165,5 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
             AsyncCompletionCallback<CopyCommandResult> callback) {
         StorpoolUtil.spLog("Unsupport operation to migrate virtual machine=%s from host=%s to host%s", vmTo.getName(), srcHost, destHost );
         throw new UnsupportedOperationException("Unsupport operation to migrate virtual machine with volumes to another host");
-    }
-
-    private void updateVmStoreTemplate(Long id, DataStoreRole role, String path) {
-        TemplateDataStoreVO templ = _templStoreDao.findByTemplate(id, role);
-        templ.setLocalDownloadPath(path);
-        _templStoreDao.persist(templ);
     }
 }

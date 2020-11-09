@@ -247,18 +247,7 @@ class TestStoragePool(cloudstackTestCase):
             rootdisksize=10
         )
 
-        cls.vm_migrate = VirtualMachine.create(
-            cls.apiclient,
-            {"name":"StorPool-%s" % uuid.uuid4() },
-            zoneid=cls.zone.id,
-            templateid=template.id,
-            serviceofferingid=cls.service_offering.id,
-            hypervisor=cls.hypervisor,
-            hostid = cls.host[0].id,
-            rootdisksize=10
-        )
-
-        cls.vm_cluster = VirtualMachine.create(
+        cls.virtual_machine3 = VirtualMachine.create(
             cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
@@ -277,8 +266,7 @@ class TestStoragePool(cloudstackTestCase):
         cls._cleanup = []
         cls._cleanup.append(cls.virtual_machine)
         cls._cleanup.append(cls.virtual_machine2)
-        cls._cleanup.append(cls.vm_migrate)
-        cls._cleanup.append(cls.vm_cluster)
+        cls._cleanup.append(cls.virtual_machine3)
         cls._cleanup.append(cls.volume_1)
         cls._cleanup.append(cls.volume_2)
         return
@@ -354,7 +342,7 @@ class TestStoragePool(cloudstackTestCase):
             hypervisor=self.hypervisor,
             rootdisksize=10
             )
-        ssh_client = virtual_machine.get_ssh_client()
+        ssh_client = virtual_machine.get_ssh_client(reconnect=True)
 
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
@@ -382,6 +370,36 @@ class TestStoragePool(cloudstackTestCase):
         backup_config = Configurations.update(self.apiclient,
             name = "sp.bypass.secondary.storage",
             value = "true")
+
+        try:
+            # Login to VM and write data to file system
+            ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
+
+            cmds = [
+                "echo %s > %s/%s" %
+                (self.random_data_0, self.test_dir, self.random_data),
+                "sync",
+                "sleep 1",
+                "sync",
+                "sleep 1",
+                "cat %s/%s" %
+                (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      self.virtual_machine.ipaddress)
+        self.assertEqual(
+            self.random_data_0,
+            result[0],
+            "Check the random data has be write into temp file!"
+        )
 
         snapshot = Snapshot.create(
            self.apiclient,
@@ -434,7 +452,28 @@ class TestStoragePool(cloudstackTestCase):
             hypervisor=self.hypervisor,
             rootdisksize=10
             )
-        ssh_client = virtual_machine.get_ssh_client()
+
+        try:
+            ssh_client = virtual_machine.get_ssh_client(reconnect=True)
+
+            cmds = [
+                "cat %s/%s" % (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      virtual_machine.ipaddress)
+
+        self.assertEqual(
+            self.random_data_0,
+            result[0],
+            "Check the random data is equal with the ramdom file!"
+        )
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
         self._cleanup.append(snapshot)
@@ -955,6 +994,140 @@ class TestStoragePool(cloudstackTestCase):
             )
 
         ssh_client = vm.get_ssh_client(reconnect=True)
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_10_snapshot_to_template_bypass_secondary(self):
+        ''' Test Create Template bypassing secondary storage from snapshot on secondary storage
+        '''
+        ##cls.virtual_machine
+        volume = list_volumes(
+                        self.apiclient,
+                        virtualmachineid = self.virtual_machine.id,
+                        type = "ROOT"
+                        )
+        try:
+            name = volume[0].path.split("/")[3]
+            sp_volume = self.spapi.volumeList(volumeName = "~" + name)
+            self.debug('################ %s' % sp_volume)
+        except spapi.ApiError as err:
+            raise Exception(err)
+
+        backup_config = Configurations.update(self.apiclient,
+            name = "sp.bypass.secondary.storage",
+            value = "false")
+
+        try:
+            # Login to VM and write data to file system
+            ssh_client = self.virtual_machine.get_ssh_client(reconnect = True)
+
+            cmds = [
+                "echo %s > %s/%s" %
+                (self.random_data_0, self.test_dir, self.random_data),
+                "sync",
+                "sleep 1",
+                "sync",
+                "sleep 1",
+                "cat %s/%s" %
+                (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      self.virtual_machine.ipaddress)
+        self.assertEqual(
+            self.random_data_0,
+            result[0],
+            "Check the random data has be write into temp file!"
+        )
+
+        snapshot = Snapshot.create(
+           self.apiclient,
+            volume_id = volume[0].id
+            )
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + name)
+                    flag = True
+                    self.debug('################ %s' % sp_snapshot)
+            if flag == False:
+                raise Exception("Could not find snasphot in snapshot_details")
+        except spapi.ApiError as err:
+               raise Exception(err)
+
+        self.assertIsNotNone(snapshot, "Could not create snapshot")
+        self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
+
+        backup_config = Configurations.update(self.apiclient,
+            name = "sp.bypass.secondary.storage",
+            value = "true")
+
+        template = self.create_template_from_snapshot(
+            self.apiclient,
+            self.services,
+            snapshotid = snapshot.id
+            )
+
+        flag = False
+        sp_snapshots = self.spapi.snapshotsList()
+        for snap in sp_snapshots:
+            tags = snap.tags
+            for t in tags:
+                if tags[t] == template.id:
+                    flag = True
+                    break
+            else:
+                continue
+            break
+
+        if flag is False:
+            raise Exception("Template does not exists in Storpool")
+        virtual_machine = VirtualMachine.create(self.apiclient,
+            {"name":"StorPool-%s" % uuid.uuid4() },
+            zoneid=self.zone.id,
+            templateid=template.id,
+            serviceofferingid=self.service_offering.id,
+            hypervisor=self.hypervisor,
+            rootdisksize=10
+            )
+
+        try:
+            ssh_client = virtual_machine.get_ssh_client(reconnect=True)
+
+            cmds = [
+                "cat %s/%s" % (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      virtual_machine.ipaddress)
+
+        self.assertEqual(
+            self.random_data_0,
+            result[0],
+            "Check the random data is equal with the ramdom file!"
+        )
+        self.assertIsNotNone(template, "Template is None")
+        self.assertIsInstance(template, Template, "Template is instance of template")
+        self._cleanup.append(snapshot)
+        self._cleanup.append(template)
+        self._cleanup.append(virtual_machine)
 
     @classmethod
     def list_hosts_by_cluster_id(cls, clusterid):

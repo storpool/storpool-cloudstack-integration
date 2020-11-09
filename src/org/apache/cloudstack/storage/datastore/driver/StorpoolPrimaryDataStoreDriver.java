@@ -37,7 +37,6 @@ import org.apache.cloudstack.framework.config.dao.ConfigurationDao;
 import org.apache.cloudstack.storage.RemoteHostEndPoint;
 import org.apache.cloudstack.storage.command.CommandResult;
 import org.apache.cloudstack.storage.command.CopyCmdAnswer;
-import org.apache.cloudstack.storage.command.CopyCommand;
 import org.apache.cloudstack.storage.command.CreateObjectAnswer;
 import org.apache.cloudstack.storage.command.StorageSubSystemCommand;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
@@ -61,6 +60,7 @@ import org.apache.log4j.Logger;
 import com.cloud.agent.api.Answer;
 import com.cloud.agent.api.storage.ResizeVolumeAnswer;
 import com.cloud.agent.api.storage.StorpoolBackupSnapshotCommand;
+import com.cloud.agent.api.storage.StorpoolBackupTemplateFromSnapshotCommand;
 import com.cloud.agent.api.storage.StorpoolCopyVolumeToSecondaryCommand;
 import com.cloud.agent.api.storage.StorpoolDownloadTemplateCommand;
 import com.cloud.agent.api.storage.StorpoolDownloadVolumeCommand;
@@ -80,11 +80,13 @@ import com.cloud.storage.ResizeVolumePayload;
 import com.cloud.storage.Storage.StoragePoolType;
 import com.cloud.storage.StorageManager;
 import com.cloud.storage.StoragePool;
+import com.cloud.storage.VMTemplateDetailVO;
 import com.cloud.storage.VMTemplateStoragePoolVO;
 import com.cloud.storage.VolumeDetailVO;
 import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.SnapshotDetailsDao;
 import com.cloud.storage.dao.SnapshotDetailsVO;
+import com.cloud.storage.dao.VMTemplateDetailsDao;
 import com.cloud.storage.dao.VMTemplatePoolDao;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.storage.dao.VolumeDetailsDao;
@@ -125,6 +127,8 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     private SnapshotDataStoreDao snapshotDataStoreDao;
     @Inject
     private VolumeDetailsDao volumeDetailsDao;
+    @Inject
+    private VMTemplateDetailsDao vmTemplateDetailsDao;
 
     @Override
     public Map<String, String> getCapabilities() {
@@ -267,7 +271,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             } else {
                 try {
                     StorpoolResizeVolumeCommand resizeCmd = new StorpoolResizeVolumeCommand(vol.getPath(), new StorageFilerTO(pool), vol.getSize(),
-                                payload.newSize, payload.shrinkOk, payload.instanceName);
+                                payload.newSize, payload.shrinkOk, payload.instanceName, payload.hosts == null ? false : true);
                     answer = (ResizeVolumeAnswer)storageMgr.sendToPool(pool, payload.hosts, resizeCmd);
 
                     if (answer == null || !answer.getResult()) {
@@ -494,13 +498,40 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 }
             } else if (srcType == DataObjectType.VOLUME && dstType == DataObjectType.TEMPLATE) {
                 // create template from volume
-                cmd = new CopyCommand(srcData.getTO(), dstData.getTO(), StorPoolHelper.getTimeout(StorPoolHelper.PrimaryStorageDownloadWait, configDao), VirtualMachineManager.ExecuteInSequence.value());
+                VolumeObjectTO volume = (VolumeObjectTO) srcData.getTO();
+                TemplateObjectTO template = (TemplateObjectTO) dstData.getTO();
+                SpConnectionDesc conn = new SpConnectionDesc(volume.getDataStore().getUuid());
 
-                EndPoint ep = selector.select(srcData, dstData);
-                if (ep == null) {
-                    err = "No remote endpoint to send command, check if host or ssvm is down?";
-                } else {
-                    answer = ep.sendMessage(cmd);
+                String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(volume.getPath(), true);
+
+
+                cmd = new StorpoolBackupTemplateFromSnapshotCommand(volume, template,
+                        StorPoolHelper.getTimeout(StorPoolHelper.PrimaryStorageDownloadWait, configDao), VirtualMachineManager.ExecuteInSequence.value());
+
+                try {
+                    Long clusterId = StorPoolHelper.findClusterIdByGlobalId(volumeName, clusterDao);
+                    EndPoint ep2 = clusterId != null ? RemoteHostEndPoint.getHypervisorHostEndPoint(StorPoolHelper.findHostByCluster(clusterId, hostDao)) : selector.select(srcData, dstData);
+                    if (ep2 == null) {
+                        err = "No remote endpoint to send command, check if host or ssvm is down?";
+                    } else {
+                        answer = ep2.sendMessage(cmd);
+                        if (answer != null && answer.getResult()) {
+                            SpApiResponse resSnapshot = StorpoolUtil.volumeSnapshot(volumeName, template.getUuid(), null, "template", "no", conn);
+                            if (resSnapshot.getError() != null) {
+                                log.debug(String.format("Could not snapshot volume with ID=%s", volume.getId()));
+                                StorpoolUtil.spLog("Volume snapshot failed with error=%s", resSnapshot.getError().getDescr());
+                                err = resSnapshot.getError().getDescr();
+                            }
+                            else {
+                                StorPoolHelper.updateVmStoreTemplate(template.getId(), template.getDataStore().getRole(), StorpoolUtil.devPath(StorpoolUtil.getSnapshotNameFromResponse(resSnapshot, false, StorpoolUtil.GLOBAL_ID)), vmTemplateDataStoreDao);
+                                vmTemplateDetailsDao.persist(new VMTemplateDetailVO(template.getId(), StorpoolUtil.SP_STORAGE_POOL_ID, String.valueOf(srcData.getDataStore().getId()), false));
+                            }
+                        }else {
+                            err = "Could not copy template to secondary " + answer.getResult();
+                        }
+                    }
+                }catch (CloudRuntimeException e) {
+                    err = e.getMessage();
                 }
             } else if (srcType == DataObjectType.TEMPLATE && dstType == DataObjectType.TEMPLATE) {
                 // copy template to primary storage

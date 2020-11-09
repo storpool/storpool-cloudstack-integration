@@ -12,6 +12,8 @@ import org.apache.cloudstack.framework.config.dao.ConfigurationDao;
 import org.apache.cloudstack.framework.config.impl.ConfigurationVO;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreVO;
+import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.snapshot.BackupManager;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
@@ -208,5 +210,11 @@ public class StorPoolHelper {
         sc.and(sc.entity().getPoolId(), Op.EQ, poolId);
         sc.and(sc.entity().getTemplateId(), Op.EQ, templateId);
         return sc.find();
+    }
+
+    public static void updateVmStoreTemplate(Long id, DataStoreRole role, String path, TemplateDataStoreDao templStoreDao) {
+        TemplateDataStoreVO templ = templStoreDao.findByTemplate(id, role);
+        templ.setLocalDownloadPath(path);
+        templStoreDao.persist(templ);
     }
 }
