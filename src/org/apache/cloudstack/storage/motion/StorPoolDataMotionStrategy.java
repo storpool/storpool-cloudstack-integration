@@ -78,9 +78,10 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
         DataObjectType dstType = destData.getType();
         if (srcType == DataObjectType.SNAPSHOT && dstType == DataObjectType.TEMPLATE && BackupManager.BypassSecondaryStorage.value()) {
             SnapshotInfo sinfo = (SnapshotInfo)srcData;
+            VolumeInfo volume = sinfo.getBaseVolume();
             String snapshotName= StorPoolHelper.getSnapshotName(sinfo.getId(), sinfo.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
             StorpoolUtil.spLog("StorPoolDataMotionStrategy.canHandle snapshot name=%s", snapshotName);
-            if(snapshotName != null && StorpoolUtil.snapshotExists(snapshotName, new SpConnectionDesc(srcData.getDataStore().getUuid()))){
+            if(snapshotName != null && StorpoolUtil.snapshotExists(snapshotName, new SpConnectionDesc(volume.getDataStore().getUuid()))){
                 return StrategyPriority.HIGHEST;
             }
             SnapshotDetailsVO snapshotDetails = _snapshotDetailsDao.findDetail(sinfo.getId(), sinfo.getUuid());
