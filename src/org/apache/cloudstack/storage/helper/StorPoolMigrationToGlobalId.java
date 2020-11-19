@@ -82,8 +82,8 @@ public class StorPoolMigrationToGlobalId extends ManagerBase {
     private VolumeDetailsDao volumeDetailsDao;
 
     private ExecutorService _executorService;
-    private Map<String, ArrayList<String>> storpoolVolumes;
-    private Map<String, ArrayList<String>> storpoolSnapshots;
+    private Map<String, ArrayList<String>> storpoolVolumes = new HashMap<>();
+    private Map<String, ArrayList<String>> storpoolSnapshots = new HashMap<>();
     private static final String LOG_FILE = "/var/log/cloudstack/management/storpool-migrate-to-globalids";
     private static final String SELECT_READY_SNAPSHOTS_NO_ON_SNAPSHOT_DETAILS = "SELECT S.id, S.uuid \n" +
             "FROM    `cloud`.`snapshots` S\n" +
@@ -108,12 +108,15 @@ public class StorPoolMigrationToGlobalId extends ManagerBase {
             List<StoragePoolVO> poolList = listStorPoolStorage();
 
             if (poolList != null && poolList.size() > 0) {
-                String spTemplate = poolList.get(0).getUuid();
-                JsonArray volumesList = StorpoolUtil.volumesList(new SpConnectionDesc(spTemplate));
-                storpoolVolumes = getStorPoolNamesAndGlobalIds(volumesList);
+                StorPoolHelper.appendLogger(log, LOG_FILE, "update");
+                for (StoragePoolVO storagePoolVO : poolList) {
+                    String spTemplate = storagePoolVO.getUuid();
+                    JsonArray volumesList = StorpoolUtil.volumesList(new SpConnectionDesc(spTemplate));
+                    storpoolVolumes.putAll(getStorPoolNamesAndGlobalIds(volumesList));
 
-                JsonArray snapshotsList = StorpoolUtil.snapshotsList(new SpConnectionDesc(spTemplate));
-                storpoolSnapshots = getStorPoolNamesAndGlobalIds(snapshotsList);
+                    JsonArray snapshotsList = StorpoolUtil.snapshotsList(new SpConnectionDesc(spTemplate));
+                    storpoolSnapshots.putAll(getStorPoolNamesAndGlobalIds(snapshotsList));
+                }
                 Map<VMSnapshotVO, List<VolumeVO>> vmSnapshotsVO = getVmSnapshotsOnStorPool(vmSnapshotDao.listAll());
                 Map<Long, String> activeSnapshots = listReadySnapshots();
                 List<TemplateDataStoreVO> templatesStoreRefs = listStorpoolStoreTemplates();
@@ -121,8 +124,6 @@ public class StorPoolMigrationToGlobalId extends ManagerBase {
                 List<VolumeVO> volumes = listStorpoolVolumes();
                 if (vmSnapshotsVO.size() > 0 || templatesStoreRefs.size() > 0
                         || templatesOnPool.size() > 0 || volumes.size() > 0 || activeSnapshots.size() > 0) {
-
-                    StorPoolHelper.appendLogger(log, LOG_FILE, "update");
                     _executorService = Executors.newCachedThreadPool(new NamedThreadFactory("StorPoolMigrationToGlobalId"));
                     _executorService.submit(new VolumesUpdater(storpoolVolumes, volumes));
                     _executorService.submit(new VmSnapshotsUpdater(storpoolSnapshots, vmSnapshotsVO, poolList));
@@ -197,7 +198,7 @@ public class StorPoolMigrationToGlobalId extends ManagerBase {
                 if (globalIdAndTemplate != null) {
                     String path = globalIdAndTemplate.get(0);
                     for (StoragePoolVO storagePoolVO : poolList) {
-                        if (storagePoolVO.getUuid().equals(globalIdAndTemplate.get(1))) {
+                        if (getStoragePoolName(storagePoolVO.getUuid()).equals(globalIdAndTemplate.get(1))) {
                             SnapshotDetailsVO details = new SnapshotDetailsVO(snapshot.getKey(), StorpoolUtil.SP_STORAGE_POOL_ID, String.valueOf(storagePoolVO.getId()), false);
                             snapshotDetailsDao.persist(details);
                             break;
@@ -242,7 +243,7 @@ public class StorPoolMigrationToGlobalId extends ManagerBase {
                     vmTemplateDataStoreDao.update(template.getId(), template);
                     vmTemplateDataStoreDao.releaseFromLockTable(template.getId());
                     for (StoragePoolVO storagePoolVO : poolList) {
-                        if (storagePoolVO.getUuid().equals(globalIdAndTemplate.get(1))) {
+                        if (getStoragePoolName(storagePoolVO.getUuid()).equals(globalIdAndTemplate.get(1))) {
                         VMTemplateDetailVO templateDetails = new VMTemplateDetailVO(template.getId(), StorpoolUtil.SP_STORAGE_POOL_ID, String.valueOf(storagePoolVO.getId()),
                                 false);
                         vmTemplateDetailsDao.persist(templateDetails);
@@ -401,5 +402,23 @@ public class StorPoolMigrationToGlobalId extends ManagerBase {
         sc.and(sc.entity().getState(), Op.EQ, Volume.State.Ready);
         sc.and(sc.entity().getPath(), Op.LIKE, StorpoolUtil.SP_OLD_PATH + "%");
         return sc.list();
+    }
+
+    private String getStoragePoolName(String url) {
+        String[] urlSplit = url.split(";");
+        if (urlSplit.length == 1 && !urlSplit[0].contains("=")) {
+            return url;
+        } else {
+            for (String kv : urlSplit) {
+                String[] toks = kv.split("=");
+                if (toks.length != 2)
+                    continue;
+                switch (toks[0]) {
+                    case "SP_TEMPLATE":
+                        return toks[1];
+                }
+            }
+        }
+        return "";
     }
 }

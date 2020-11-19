@@ -11,8 +11,8 @@ Usage:	build-cloudstack -c commit-id -d srcdir -f forked-dir -r username@hostnam
 EOUSAGE
 }
 
-unset srcdir commit_id forked remote second_remote third_remote fourth_remote
-while getopts 'c:d:f:r:s:t:a:' o; do
+unset srcdir commit_id forked remote1 remote2 remote3 remote4 remote5 remote6
+while getopts 'c:d:f:1:2:3:4:5:6:' o; do
 	case "$o" in
 		c)
 			if [ "${OPTARG#-}" != "$OPTARG" ]; then
@@ -31,17 +31,23 @@ while getopts 'c:d:f:r:s:t:a:' o; do
 			forked="$OPTARG"
 			;;
 
-		r)
-			remote="$OPTARG"
+		1)
+			remote1="$OPTARG"
 			;;
-		s)	
-			second_remote="$OPTARG"
+		2)
+			remote2="$OPTARG"
 			;;
-		t)	
-			third_remote="$OPTARG"
+		3)
+			remote3="$OPTARG"
 			;;
-		a)	
-			fourth_remote="$OPTARG"
+		4)
+			remote4="$OPTARG"
+			;;
+		5)
+			remote5="$OPTARG"
+			;;
+		6)
+			remote6="$OPTARG"
 			;;
 		*)
 			usage 1>&2
@@ -50,7 +56,7 @@ while getopts 'c:d:f:r:s:t:a:' o; do
 	esac
 done
 
-if [ -z "$commit_id" ] || [ -z "$srcdir" ] || [ -z "$forked" ] || [ -z "$remote" ] || [ -z "$second_remote" ]; then
+if [ -z "$commit_id" ] || [ -z "$srcdir" ] || [ -z "$forked" ] || [ -z "$remote1" ] || [ -z "$remote2" ]; then
 	usage 1>&2
 	exit 1
 fi
@@ -60,17 +66,27 @@ git checkout "$commit_id"
 mvn clean install
 
 cp -- target/cloud-plugin-storage-volume-storpool-*.0.jar "$forked/plugins/storage/volume/"
-scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$remote:/usr/share/cloudstack-agent/lib/"
-ssh -- "$remote" systemctl restart cloudstack-agent
-scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$second_remote:/usr/share/cloudstack-agent/lib/"
-ssh -- "$second_remote" systemctl restart cloudstack-agent
+scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$remote1:/usr/share/cloudstack-agent/lib/"
+ssh -- "$remote1" systemctl restart cloudstack-agent
+scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$remote2:/usr/share/cloudstack-agent/lib/"
+ssh -- "$remote2" systemctl restart cloudstack-agent
 
-if [ -n "$third_remote" ]; then
-	scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$third_remote:/usr/share/cloudstack-agent/lib/"
-	ssh -- "$third_remote" systemctl restart cloudstack-agent
+if [ -n "$remote3" ]; then
+	scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$remote3:/usr/share/cloudstack-agent/lib/"
+	ssh -- "$remote3" systemctl restart cloudstack-agent
 fi
 
-if [ -n "$fourth_remote" ]; then
-	scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$fourth_remote:/usr/share/cloudstack-agent/lib/"
-	ssh -- "$fourth_remote" systemctl restart cloudstack-agent
+if [ -n "$remote4" ]; then
+	scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$remote4:/usr/share/cloudstack-agent/lib/"
+	ssh -- "$remote4" systemctl restart cloudstack-agent
+fi
+
+if [ -n "$remote5" ]; then
+	scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$remote5:/usr/share/cloudstack-agent/lib/"
+	ssh -- "$remote5" systemctl restart cloudstack-agent
+fi
+
+if [ -n "$remote6" ]; then
+	scp -- target/cloud-plugin-storage-volume-storpool-*.jar "$remote6:/usr/share/cloudstack-agent/lib/"
+	ssh -- "$remote6" systemctl restart cloudstack-agent
 fi

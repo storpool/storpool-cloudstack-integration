@@ -355,17 +355,21 @@ class HelperUtil:
                 input,
                 "-f",
                 args.forked,
-                "-r",
-                args.remote,
-                "-s",
-                args.second,
-                "-t",
-                args.third,
-                "-a",
-                args.fourth
+                "-1",
+                args.remote1,
+                "-2",
+                args.remote2,
+                "-3",
+                args.remote3,
+                "-4",
+                args.remote4,
+                "-5",
+                args.remote5,
+                "-6",
+                args.remote6
             ],
 #             [
-#                 "/home/test_storpool/cloudstack/marvin/build-cloudstack",
+#                 "/home/test_storpool/cloudstack/marvin/build-cs",
 #                 "-d",
 #                 "/home/test_storpool/cloudstack",
 #                 "-c",
@@ -676,7 +680,7 @@ class HelperUtil:
     def storpool_volume_globalid(cls, volume):
         name = volume.path.split("/")[3]
         try:
-            spvolume = cls.spapi.volumeList(volumeName = "~" + name)
+            spvolume = cls.testClass.spapi.volumeList(volumeName = "~" + name)
             cfg.logger.info("storpool_volume_globalid volumeList %s" % spvolume)
         except spapi.ApiError as err:
            raise Exception(err)
@@ -975,7 +979,7 @@ class HelperUtil:
 
         parser.add_argument("-b", "--build",action='store',
                           help="build_cloudstack file. It has to be located in marvin directory of StorPool's plug-in",
-                          default=os.path.join(default_dir, "marvin/build-cloudstack")
+                          default=os.path.join(default_dir, "marvin/build-cs")
                           )
         parser.add_argument("-u", "--uuid",action='store',
                           help="Latest commit id that keeps the logic until globalId change"
@@ -996,21 +1000,28 @@ class HelperUtil:
                           help="Folder of CloudStack local repository. It has to be builded",
                           default= os.path.join(default_dir, "cloudstack")
                           )
-        parser.add_argument("-r", "--remote",action='store',
+        parser.add_argument("-1", "--remote1",action='store',
                           help="Remote IP of first hypervisor"
                           )
-        parser.add_argument("-s", "--second",action='store',
+        parser.add_argument("-2", "--remote2",action='store',
                           help="Remote IP of second hypervisor"
                           )
-        parser.add_argument("-t", "--third",action='store',
+        parser.add_argument("-3", "--remote3",action='store',
                           help="Remote IP of third hypervisor",
                           default=""
                           )
-        parser.add_argument("-a", "--fourth",action='store',
+        parser.add_argument("-4", "--remote4",action='store',
                           help="Remote IP of fourth hypervisor",
                           default=""
                           )
-        
+        parser.add_argument("-5", "--remote5",action='store',
+                          help="Remote IP of fourth hypervisor",
+                          default=""
+                          )
+        parser.add_argument("-6", "--remote6",action='store',
+                          help="Remote IP of fourth hypervisor",
+                          default=""
+                          )
         parser.add_argument('unittest_args', nargs='*')
         args = parser.parse_args()
         cfg.logger.info(args)
