@@ -41,7 +41,8 @@ from marvin.lib.common import (get_zone,
                                list_virtual_machines,
                                list_configurations,
                                list_service_offering,
-                               list_clusters)
+                               list_clusters,
+                               list_zones)
 from marvin.cloudstackAPI import (listOsTypes,
                                   listTemplates,
                                   listHosts,
@@ -56,7 +57,6 @@ import subprocess
 from storpool import spapi
 from marvin.configGenerator import configuration
 import uuid
-from __builtin__ import True
 
 class TestStoragePool(cloudstackTestCase):
 
@@ -75,7 +75,13 @@ class TestStoragePool(cloudstackTestCase):
         cls.services = testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates
         cls.domain = get_domain(cls.apiclient)
-        cls.zone = get_zone(cls.apiclient, testClient.getZoneForTests())
+        cls.zone = None
+
+        zones = list_zones(cls.apiclient)
+
+        for z in zones:
+            if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
+                cls.zone = z
 
         storpool_primary_storage = {
             "name" : "ssd",
@@ -177,7 +183,7 @@ class TestStoragePool(cloudstackTestCase):
             account = "system"
         )
 
-        cls.local_cluster = cls.get_local_cluster()
+        cls.local_cluster = cls.get_local_cluster(zoneid = cls.zone.id)
         cls.host = cls.list_hosts_by_cluster_id(cls.local_cluster.id)
 
         cls.debug(pprint.pformat(template))
@@ -304,19 +310,6 @@ class TestStoragePool(cloudstackTestCase):
 
     def tearDown(self):
         return
-
-    @classmethod
-    def get_local_cluster(self):
-       storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
-       self.debug(storpool_clusterid)
-       clusters = list_clusters(self.apiclient)
-       for c in clusters:
-           configuration = list_configurations(
-               self.apiclient,
-               clusterid = c.id
-               )
-           if configuration[0].name == 'sp.cluster.id'  and configuration[0].value == storpool_clusterid:
-               return c
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_01_attach_detach_volume_to_running_vm(self):
@@ -965,7 +958,7 @@ class TestStoragePool(cloudstackTestCase):
             hypervisor=self.hypervisor,
             rootdisksize=10
             )
-        ssh_client = virtual_machine.get_ssh_client()
+        ssh_client = virtual_machine.get_ssh_client(reconnect=True)
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
         self._cleanup.append(template)
@@ -1059,7 +1052,7 @@ class TestStoragePool(cloudstackTestCase):
             hypervisor=self.hypervisor,
             rootdisksize=10
             )
-        ssh_client = virtual_machine.get_ssh_client()
+        ssh_client = virtual_machine.get_ssh_client(reconnect=True)
 
         cluster = Cluster.update(
             self.apiclient,
@@ -1236,11 +1229,11 @@ class TestStoragePool(cloudstackTestCase):
         return Template(apiclient.createTemplate(cmd).__dict__)
 
     @classmethod
-    def get_local_cluster(cls):
+    def get_local_cluster(cls, zoneid):
        storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
        clusterid = storpool_clusterid.split("=")
        cls.debug(storpool_clusterid)
-       clusters = list_clusters(cls.apiclient)
+       clusters = list_clusters(cls.apiclient, zoneid = zoneid)
        for c in clusters:
            configuration = list_configurations(
                cls.apiclient,

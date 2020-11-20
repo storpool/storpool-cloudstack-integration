@@ -53,7 +53,8 @@ from marvin.lib.common import (get_zone,
                                list_virtual_machines,
                                list_configurations,
                                list_service_offering,
-                               list_clusters)
+                               list_clusters,
+                               list_zones)
 from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_snapshot_on_nfs, isAlmostEqual
 from nose.plugins.attrib import attr
 import uuid
@@ -92,7 +93,14 @@ class TestLiveMigration(cloudstackTestCase):
         cls.services = testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates
         cls.domain = get_domain(cls.apiclient)
-        cls.zone = get_zone(cls.apiclient, testClient.getZoneForTests())
+        cls.zone = None
+
+
+        zones = list_zones(cls.apiclient)
+
+        for z in zones:
+            if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
+                cls.zone = z
 
         storpool_primary_storage = {
             "name" : "ssd",
@@ -181,14 +189,14 @@ class TestLiveMigration(cloudstackTestCase):
         cls.service_offering = service_offerings
         cls.debug(pprint.pformat(cls.service_offering))
 
-        cls.local_cluster = cls.get_local_cluster()
+        cls.local_cluster = cls.get_local_cluster(zoneid = cls.zone.id)
         cls.host = cls.list_hosts_by_cluster_id(cls.local_cluster.id)
 
         assert len(cls.host) > 1, "Hosts list is less than 1"
         cls.host_on_local_1 = cls.host[0]
         cls.host_on_local_2 = cls.host[1]
 
-        cls.remote_cluster = cls.get_remote_cluster()
+        cls.remote_cluster = cls.get_remote_cluster(zoneid = cls.zone.id)
         cls.host_remote = cls.list_hosts_by_cluster_id(cls.remote_cluster.id)
         assert len(cls.host_remote) > 1, "Hosts list is less than 1"
 
@@ -536,11 +544,11 @@ class TestLiveMigration(cloudstackTestCase):
 
 
     @classmethod
-    def get_local_cluster(cls):
+    def get_local_cluster(cls, zoneid):
        storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
        clusterid = storpool_clusterid.split("=")
        cls.debug(storpool_clusterid)
-       clusters = list_clusters(cls.apiclient)
+       clusters = list_clusters(cls.apiclient, zoneid = zoneid)
        for c in clusters:
            configuration = list_configurations(
                cls.apiclient,
@@ -551,11 +559,11 @@ class TestLiveMigration(cloudstackTestCase):
                    return c
 
     @classmethod
-    def get_remote_cluster(cls):
+    def get_remote_cluster(cls, zoneid):
        storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
        clusterid = storpool_clusterid.split("=")
        cls.debug(storpool_clusterid)
-       clusters = list_clusters(cls.apiclient)
+       clusters = list_clusters(cls.apiclient, zoneid = zoneid)
        for c in clusters:
            configuration = list_configurations(
                cls.apiclient,
