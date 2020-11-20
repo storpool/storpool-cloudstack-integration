@@ -39,7 +39,8 @@ from marvin.lib.common import (get_zone,
                                list_disk_offering,
                                list_accounts,
                                list_storage_pools,
-                               list_service_offering
+                               list_service_offering,
+                               list_zones
                                )
 from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_snapshot_on_nfs, isAlmostEqual, get_hypervisor_type
 from nose.plugins.attrib import attr
@@ -161,7 +162,15 @@ class TestVmSnapshot(cloudstackTestCase):
         cls.services = testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates
         cls.domain = get_domain(cls.apiclient)
-        cls.zone = get_zone(cls.apiclient, testClient.getZoneForTests())
+        cls.zone = None
+
+
+        zones = list_zones(cls.apiclient)
+
+        for z in zones:
+            if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
+                cls.zone = z
+
         cls.cluster = list_clusters(cls.apiclient)[0]
         cls.hypervisor = get_hypervisor_type(cls.apiclient)
 

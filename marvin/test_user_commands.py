@@ -61,7 +61,8 @@ from marvin.lib.common import (get_zone,
                                list_service_offering,
                                list_clusters,
                                list_users,
-                               list_accounts)
+                               list_accounts,
+                               list_zones)
 from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_snapshot_on_nfs, isAlmostEqual
 from nose.plugins.attrib import attr
 
@@ -86,7 +87,14 @@ class TestStoragePool(cloudstackTestCase):
         cls.services = testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates
         cls.domain = get_domain(cls.apiclient)
-        cls.zone = get_zone(cls.apiclient, testClient.getZoneForTests())
+        cls.zone = None
+
+
+        zones = list_zones(cls.apiclient)
+
+        for z in zones:
+            if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
+                cls.zone = z
 
         storpool_primary_storage = {
             "name" : "ssd",

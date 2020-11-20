@@ -41,7 +41,8 @@ from marvin.lib.common import (get_zone,
                                list_virtual_machines,
                                list_configurations,
                                list_service_offering,
-                               list_clusters)
+                               list_clusters,
+                               list_zones)
 from marvin.cloudstackAPI import (listOsTypes,
                                   listTemplates,
                                   listHosts,
@@ -74,7 +75,14 @@ class TestStoragePool(cloudstackTestCase):
         cls.services = testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates
         cls.domain = get_domain(cls.apiclient)
-        cls.zone = get_zone(cls.apiclient, testClient.getZoneForTests())
+        cls.zone = None
+
+
+        zones = list_zones(cls.apiclient)
+
+        for z in zones:
+            if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
+                cls.zone = z
 
         storpool_primary_storage = {
             "name" : "ssd",
@@ -176,7 +184,7 @@ class TestStoragePool(cloudstackTestCase):
             account = "system"
         )
 
-        cls.local_cluster = cls.get_local_cluster()
+        cls.local_cluster = cls.get_local_cluster(zoneid = cls.zone.id)
         cls.host = cls.list_hosts_by_cluster_id(cls.local_cluster.id)
 
         cls.debug(pprint.pformat(template))
@@ -297,11 +305,11 @@ class TestStoragePool(cloudstackTestCase):
         return
 
     @classmethod
-    def get_local_cluster(cls):
+    def get_local_cluster(cls, zoneid):
        storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
        clusterid = storpool_clusterid.split("=")
        cls.debug(storpool_clusterid)
-       clusters = list_clusters(cls.apiclient)
+       clusters = list_clusters(cls.apiclient, zoneid = zoneid)
        for c in clusters:
            configuration = list_configurations(
                cls.apiclient,
@@ -323,11 +331,7 @@ class TestStoragePool(cloudstackTestCase):
             type = "ROOT"
             )
 
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "true"):
-            backup_config = Configurations.update(self.apiclient,
+        backup_config = Configurations.update(self.apiclient,
             name = "sp.bypass.secondary.storage",
             value = "false")
         snapshot = Snapshot.create(
@@ -375,11 +379,7 @@ class TestStoragePool(cloudstackTestCase):
         except spapi.ApiError as err:
             raise Exception(err)
 
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "false"):
-            backup_config = Configurations.update(self.apiclient,
+        backup_config = Configurations.update(self.apiclient,
             name = "sp.bypass.secondary.storage",
             value = "true")
 
@@ -446,11 +446,7 @@ class TestStoragePool(cloudstackTestCase):
         '''
             Test Create snapshot and backup to secondary
         '''
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "true"):
-            backup_config = Configurations.update(self.apiclient,
+        backup_config = Configurations.update(self.apiclient,
             name = "sp.bypass.secondary.storage",
             value = "false")
         volume = list_volumes(
@@ -484,11 +480,7 @@ class TestStoragePool(cloudstackTestCase):
         '''
             Test snapshot bypassing secondary
         '''
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "false"):
-            backup_config = Configurations.update(self.apiclient,
+        backup_config = Configurations.update(self.apiclient,
             name = "sp.bypass.secondary.storage",
             value = "true")
         volume = list_volumes(
@@ -533,11 +525,7 @@ class TestStoragePool(cloudstackTestCase):
         except spapi.ApiError as err:
             raise Exception(err)
 
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "false"):
-            backup_config = Configurations.update(self.apiclient,
+        backup_config = Configurations.update(self.apiclient,
             name = "sp.bypass.secondary.storage",
             value = "true")
 
@@ -595,7 +583,7 @@ class TestStoragePool(cloudstackTestCase):
         try:
             sp_snapshot = self.spapi.snapshotList(snapshotName = "~" + storpoolGlId)
             if sp_snapshot is not None:
-                raise Exception("Snapshot does not exists on Storpool name" + storpoolGlId)
+                raise Exception("Snapshot exists on StorPool name " + storpoolGlId)
         except spapi.ApiError as err:
                 self.debug("Do nothing the template has to be deleted")
         self._cleanup.append(snapshot)
@@ -617,11 +605,7 @@ class TestStoragePool(cloudstackTestCase):
         except spapi.ApiError as err:
             raise Exception(err)
 
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "true"):
-            backup_config = Configurations.update(self.apiclient,
+        backup_config = Configurations.update(self.apiclient,
             name = "sp.bypass.secondary.storage",
             value = "false")
 
@@ -648,11 +632,7 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsNotNone(snapshot, "Could not create snapshot")
         self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
 
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "false"):
-            backup_config = Configurations.update(self.apiclient,
+        backup_config = Configurations.update(self.apiclient,
             name = "sp.bypass.secondary.storage",
             value = "true")
 
@@ -903,11 +883,7 @@ class TestStoragePool(cloudstackTestCase):
         except spapi.ApiError as err:
            raise Exception(err)
 
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "false"):
-            backup_config = Configurations.update(self.apiclient,
+        backup_config = Configurations.update(self.apiclient,
             name = "sp.bypass.secondary.storage",
             value = "true")
 
@@ -963,11 +939,7 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
 
-        backup_config = list_configurations(
-            self.apiclient,
-            name = "sp.bypass.secondary.storage")
-        if (backup_config[0].value == "true"):
-            backup_config = Configurations.update(self.apiclient,
+        backup_config = Configurations.update(self.apiclient,
             name = "sp.bypass.secondary.storage",
             value = "false")  
 

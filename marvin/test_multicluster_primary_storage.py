@@ -48,7 +48,8 @@ from marvin.lib.common import (get_zone,
                                list_configurations,
                                list_service_offering,
                                list_clusters,
-                               list_accounts)
+                               list_accounts,
+                               list_zones)
 from marvin.lib.utils import get_hypervisor_type, random_gen, cleanup_resources
 
 from nose.plugins.attrib import attr
@@ -97,8 +98,14 @@ class TestNewPrimaryStorage(cloudstackTestCase):
         cls.services = cls.testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates
         cls.domain = get_domain(cls.apiclient)
-        cls.zone = get_zone(cls.apiclient, cls.testClient.getZoneForTests())
+        cls.zone = None
 
+
+        zones = list_zones(cls.apiclient)
+
+        for z in zones:
+            if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
+                cls.zone = z
         disk_offerings = list_disk_offering(
             cls.apiclient,
             name="Small"
