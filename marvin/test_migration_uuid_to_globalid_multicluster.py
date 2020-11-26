@@ -306,7 +306,14 @@ class TestMigrationFromUuidToGlobalId(unittest.TestCase):
         #change to latest commit with globalId implementation
         cls.helper.switch_to_globalid_commit(cls.ARGS.globalid, cls.ARGS)
         cfg.logger.info("The setup is done, proceeding with the tests")
-
+        cls.primary_storage = list_storage_pools(
+            cls.apiclient,
+            name = primarystorage.get("name")
+            )[0]
+        cls.primary_storage2 = list_storage_pools(
+            cls.apiclient,
+            name = primarystorage2.get("name")
+            )[0]
     @classmethod
     def tearDownClass(cls):
         cls.cleanUpCloudStack()
@@ -405,7 +412,7 @@ class TestMigrationFromUuidToGlobalId(unittest.TestCase):
             except spapi.ApiError as err:
                 raise Exception(err)
 
-            self.assertEqual(v.storageid, self.primary_storage.id, "Did not migrate virtual machine from NFS to StorPool")
+            self.assertEqual(v.storageid, self.primary_storage.id, "Did not migrate virtual machine from NFS to StorPool vol storageId=%s primary storage id=%s" % (v.storageid, self.primary_storage.id))
         self.virtual_machine3.stop(self.apiclient, forced=True)
         cmd = migrateVirtualMachine.migrateVirtualMachineCmd()
         cmd.virtualmachineid = self.virtual_machine3.id

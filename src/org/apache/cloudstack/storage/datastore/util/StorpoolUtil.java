@@ -34,7 +34,12 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
+import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailVO;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
@@ -125,6 +130,12 @@ public class StorpoolUtil {
     public static final String GLOBAL_ID = "snapshotGlobalId";
     public static final String UPDATED_DETAIL = "renamed";
     public static final String SP_STORAGE_POOL_ID = "spStoragePoolId";
+
+    public static final String SP_HOST_PORT = "SP_API_HTTP_HOST";
+
+    public static final String SP_TEMPLATE = "SP_TEMPLATE";
+
+    public static final String SP_AUTH_TOKEN = "SP_AUTH_TOKEN";
 
     public static enum StorpoolRights {
         RO("ro"),
@@ -243,6 +254,12 @@ public class StorpoolUtil {
             }
         }
 
+        public SpConnectionDesc(String host, String authToken2, String templateName2) {
+            this.hostPort = host;
+            this.authToken = authToken2;
+            this.templateName = templateName2;
+        }
+
         public String getHostPort() {
             return this.hostPort;
         }
@@ -254,6 +271,45 @@ public class StorpoolUtil {
         public String getTemplateName() {
             return this.templateName;
         }
+    }
+
+    public static SpConnectionDesc getSpConnection(String url, long poolId, StoragePoolDetailsDao poolDetails,
+            PrimaryDataStoreDao storagePool) {
+        List<StoragePoolDetailVO> details = poolDetails.listDetails(poolId);
+        String host = null;
+        String authToken = null;
+        String templateName = null;
+        for (StoragePoolDetailVO storagePoolDetailVO : details) {
+            switch (storagePoolDetailVO.getName()) {
+            case SP_HOST_PORT:
+                host = storagePoolDetailVO.getValue();
+                break;
+            case SP_AUTH_TOKEN:
+                authToken = storagePoolDetailVO.getValue();
+                break;
+            case SP_TEMPLATE:
+                templateName = storagePoolDetailVO.getValue();
+                break;
+            }
+        }
+        if (host != null && authToken != null && templateName != null) {
+            return new SpConnectionDesc(host, authToken, templateName);
+        } else {
+            return updateStorageAndStorageDetails(url, poolId, poolDetails, storagePool);
+        }
+    }
+
+    private static SpConnectionDesc updateStorageAndStorageDetails(String url, long poolId,
+            StoragePoolDetailsDao poolDetails, PrimaryDataStoreDao storagePool) {
+        SpConnectionDesc conn = new SpConnectionDesc(url);
+        poolDetails.persist(new StoragePoolDetailVO(poolId, SP_HOST_PORT, conn.getHostPort(), false));
+        poolDetails.persist(new StoragePoolDetailVO(poolId, SP_AUTH_TOKEN, conn.getAuthToken(), false));
+        poolDetails.persist(new StoragePoolDetailVO(poolId, SP_TEMPLATE, conn.getTemplateName(), false));
+        StoragePoolVO pool = storagePool.findById(poolId);
+        pool.setUuid(conn.getTemplateName() + ";" + UUID.randomUUID().toString());
+        storagePool.update(poolId, pool);
+        StorpoolUtil.spLog("Storage pool with id=%s and template's name=%s was updated and its connection details are hidden from UI.", pool.getId(), conn.getTemplateName());
+        return conn;
     }
 
     public static class SpApiResponse {

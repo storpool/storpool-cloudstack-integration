@@ -19,7 +19,9 @@ import org.apache.cloudstack.framework.async.AsyncCompletionCallback;
 import org.apache.cloudstack.framework.config.dao.ConfigurationDao;
 import org.apache.cloudstack.storage.RemoteHostEndPoint;
 import org.apache.cloudstack.storage.command.CopyCmdAnswer;
+import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreDao;
 import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
@@ -69,6 +71,10 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
     private VMTemplateDetailsDao vmTemplateDetailsDao;
     @Inject
     private SnapshotDataStoreDao _snapshotStoreDao;
+    @Inject
+    private StoragePoolDetailsDao _storagePoolDetails;
+    @Inject
+    private PrimaryDataStoreDao _storagePool;
 
     @Override
     public StrategyPriority canHandle(DataObject srcData, DataObject destData) {
@@ -79,7 +85,8 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
             VolumeInfo volume = sinfo.getBaseVolume();
             String snapshotName= StorPoolHelper.getSnapshotName(sinfo.getId(), sinfo.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
             StorpoolUtil.spLog("StorPoolDataMotionStrategy.canHandle snapshot name=%s", snapshotName);
-            if(snapshotName != null && StorpoolUtil.snapshotExists(snapshotName, new SpConnectionDesc(volume.getDataStore().getUuid()))){
+            SpConnectionDesc conn = StorpoolUtil.getSpConnection(volume.getDataStore().getUuid(), volume.getDataStore().getId(), _storagePoolDetails, _storagePool);
+            if(snapshotName != null && StorpoolUtil.snapshotExists(snapshotName, conn)){
                 return StrategyPriority.HIGHEST;
             }
             SnapshotDetailsVO snapshotDetails = _snapshotDetailsDao.findDetail(sinfo.getId(), sinfo.getUuid());
@@ -104,7 +111,7 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
         SnapshotInfo sInfo = _snapshotDataFactory.getSnapshot(snapshot.getId(), store);
 
         VolumeInfo vInfo = sInfo.getBaseVolume();
-        SpConnectionDesc conn = new SpConnectionDesc(vInfo.getDataStore().getUuid());
+        SpConnectionDesc conn = StorpoolUtil.getSpConnection(vInfo.getDataStore().getUuid(), vInfo.getDataStore().getId(), _storagePoolDetails, _storagePool);
         String name = template.getUuid();
         String volumeName = "";
 

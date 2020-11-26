@@ -20,6 +20,7 @@ package org.apache.cloudstack.storage.datastore.lifecycle;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import javax.inject.Inject;
 
@@ -30,6 +31,8 @@ import org.apache.cloudstack.engine.subsystem.api.storage.PrimaryDataStoreLifeCy
 import org.apache.cloudstack.engine.subsystem.api.storage.PrimaryDataStoreParameters;
 import org.apache.cloudstack.engine.subsystem.api.storage.ZoneScope;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailVO;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
@@ -83,6 +86,8 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
     private VMTemplateDetailsDao vmTemplateDetailsDao;
     @Inject
     private VMSnapshotDetailsDao vmSnapshotDetaildsDao;
+    @Inject
+    private StoragePoolDetailsDao storagePoolDetailsDao;
 
     @Override
     public DataStore initialize(Map<String, Object> dsInfos) {
@@ -114,7 +119,31 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
         }
 
         for (StoragePoolVO sp : _primaryDataStoreDao.findPoolsByProvider("StorPool")) {
-            SpConnectionDesc old = new SpConnectionDesc(sp.getUuid());
+            List<StoragePoolDetailVO> spDetails = storagePoolDetailsDao.listDetails(sp.getId());
+            String host = null;
+            String template = null;
+            String authToken = null;
+            SpConnectionDesc old = null;
+            for (StoragePoolDetailVO storagePoolDetailVO : spDetails) {
+                switch (storagePoolDetailVO.getName()) {
+                case StorpoolUtil.SP_AUTH_TOKEN:
+                    authToken = storagePoolDetailVO.getValue();
+                    break;
+                case StorpoolUtil.SP_HOST_PORT:
+                    host = storagePoolDetailVO.getValue();
+                    break;
+                case StorpoolUtil.SP_TEMPLATE:
+                    template = storagePoolDetailVO.getValue();
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (host != null && template != null && authToken != null) {
+                old = new SpConnectionDesc(host, authToken, template);
+            } else {
+                old = new SpConnectionDesc(sp.getUuid());
+            }
             if( old.getHostPort().equals(conn.getHostPort()) && old.getTemplateName().equals(conn.getTemplateName()) )
                 throw new IllegalArgumentException("StorPool cluster and template already in use by pool " + sp.getName());
         }
@@ -131,11 +160,13 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
 
         @SuppressWarnings("unchecked")
         Map<String, String> details = (Map<String, String>)dsInfos.get("details");
-
+        details.put(StorpoolUtil.SP_AUTH_TOKEN, conn.getAuthToken());
+        details.put(StorpoolUtil.SP_HOST_PORT, conn.getHostPort());
+        details.put(StorpoolUtil.SP_TEMPLATE, conn.getTemplateName());
 
         PrimaryDataStoreParameters parameters = new PrimaryDataStoreParameters();
         parameters.setName(name);
-        parameters.setUuid(url);
+        parameters.setUuid(conn.getTemplateName() + ";" + UUID.randomUUID().toString());
         parameters.setZoneId(zoneId);
         parameters.setProviderName(providerName);
         parameters.setType(StoragePoolType.SharedMountPoint);
@@ -249,14 +280,18 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
             for (VMTemplateStoragePoolVO templatePoolRef : lstTemplatePoolRefs) {
                 SpApiResponse resp = StorpoolUtil.snapshotDelete(
                         StorpoolStorageAdaptor.getVolumeNameFromPath(templatePoolRef.getLocalDownloadPath(), true),
-                        new SpConnectionDesc(store.getUuid()));
+                        StorpoolUtil.getSpConnection(store.getUuid(), store.getId(), storagePoolDetailsDao, _primaryDataStoreDao));
                 if (resp.getError() != null) {
                     throw new CloudRuntimeException(String.format("Could not delete StorPool's snapshot from template_spool_ref table due to %s", resp.getError()));
                 }
                 vmTemplatePoolDao.remove(templatePoolRef.getId());
             }
         }
-        return dataStoreHelper.deletePrimaryDataStore(store);
+        boolean isDeleted = dataStoreHelper.deletePrimaryDataStore(store);
+        if (isDeleted) {
+            storagePoolDetailsDao.removeDetails(storagePoolId);
+        }
+        return isDeleted;
     }
 
     @Override

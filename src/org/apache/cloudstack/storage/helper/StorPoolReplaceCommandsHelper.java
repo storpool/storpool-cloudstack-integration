@@ -28,10 +28,13 @@ import org.apache.cloudstack.api.command.user.vmsnapshot.CreateVMSnapshotCmd;
 import org.apache.cloudstack.api.command.user.volume.AttachVolumeCmd;
 import org.apache.cloudstack.api.command.user.volume.DetachVolumeCmd;
 import org.apache.cloudstack.context.CallContext;
+import org.apache.cloudstack.engine.subsystem.api.storage.DataStore;
+import org.apache.cloudstack.engine.subsystem.api.storage.DataStoreManager;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeDataFactory;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeInfo;
 import org.apache.cloudstack.framework.jobs.AsyncJob;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
@@ -201,7 +204,7 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
         @Inject
         private VolumeDao _volumeDao;
         @Inject
-        private  UserVmDao _userVMDao;
+        private UserVmDao _userVMDao;
         @Inject
         private AccountManager _accountMgr;
         @Inject
@@ -216,6 +219,10 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
         private RoleDao roleDao;
         @Inject
         private AccountManager accountManager;
+        @Inject
+        private DataStoreManager _dataStore;
+        @Inject
+        private StoragePoolDetailsDao storagePoolDetailsDao;
 
         private int _vmSnapshotMax = VMSnapshotManager.VMSNAPSHOTMAX;
 
@@ -254,7 +261,8 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
             StoragePool pool = (StoragePool) volumeObjectTO.getDataStore();
             String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volume.getPath(), true);
             if (name != null && pool.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
-                SpConnectionDesc conn = new SpConnectionDesc(volumeObjectTO.getDataStore().getUuid());
+                DataStore store = _dataStore.getPrimaryDataStore(volumeObjectTO.getDataStore().getUuid());
+                SpConnectionDesc conn = StorpoolUtil.getSpConnection(store.getUuid(), store.getId(), storagePoolDetailsDao, storagePool);
                     log.debug(String.format("Updating StorPool's volume=%s tags", name));
                     VMInstanceVO vm = _vmInstanceDao.findById(vmId);
                     StorpoolUtil.volumeUpadateTags(name, vm != null ? vm.getUuid() : "", null, conn, value.length > 0 ? value[0] : "");
