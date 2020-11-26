@@ -22,11 +22,14 @@ import java.util.List;
 
 import javax.inject.Inject;
 
+import org.apache.cloudstack.engine.subsystem.api.storage.DataStore;
+import org.apache.cloudstack.engine.subsystem.api.storage.DataStoreManager;
 import org.apache.cloudstack.engine.subsystem.api.storage.StrategyPriority;
 import org.apache.cloudstack.engine.subsystem.api.storage.VMSnapshotOptions;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeDataFactory;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeInfo;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
@@ -107,6 +110,10 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
     private VolumeDataFactory volFactory;
     @Inject
     private VolumeDetailsDao volumeDetailsDao;
+    @Inject
+    private StoragePoolDetailsDao storagePoolDetailsDao;
+    @Inject
+    private DataStoreManager dataStoreManager;
     int _wait;
 
     @Override
@@ -127,7 +134,8 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
         try {
 
             List<VolumeObjectTO> volumeTOs = vmSnapshotHelper.getVolumeTOList(userVm.getId());
-            SpConnectionDesc conn = new SpConnectionDesc(volumeTOs.get(0).getDataStore().getUuid());
+            DataStore dataStore = dataStoreManager.getPrimaryDataStore(volumeTOs.get(0).getDataStore().getUuid());
+            SpConnectionDesc conn = StorpoolUtil.getSpConnection(dataStore.getUuid(), dataStore.getId(), storagePoolDetailsDao, storagePool);
 
             long prev_chain_size = 0;
             long virtual_size = 0;
@@ -244,7 +252,8 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
         Long hostId = vmSnapshotHelper.pickRunningHost(vmSnapshot.getVmId());
 
         List<VolumeObjectTO> volumeTOs = vmSnapshotHelper.getVolumeTOList(vmSnapshot.getVmId());
-        SpConnectionDesc conn = new SpConnectionDesc(volumeTOs.get(0).getDataStore().getUuid());
+        DataStore dataStore = dataStoreManager.getPrimaryDataStore(volumeTOs.get(0).getDataStore().getUuid());
+        SpConnectionDesc conn = StorpoolUtil.getSpConnection(dataStore.getUuid(), dataStore.getId(), storagePoolDetailsDao, storagePool);
 
         String vmInstanceName = vmSnapshot.getUuid();
         VMSnapshotTO parent = vmSnapshotHelper.getSnapshotWithParents(vmSnapshotVO).getParent();
@@ -335,7 +344,8 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                 revertToSnapshotCommand.setPlatformEmulator(guestOsMapping.getGuestOsName());
             }
             StorpoolRevertToVMSnapshotAnswer answer = null;
-            SpConnectionDesc conn = new SpConnectionDesc(volumeTOs.get(0).getDataStore().getUuid());
+            DataStore dataStore = dataStoreManager.getPrimaryDataStore(volumeTOs.get(0).getDataStore().getUuid());
+            SpConnectionDesc conn = StorpoolUtil.getSpConnection(dataStore.getUuid(), dataStore.getId(), storagePoolDetailsDao, storagePool);
             for (VolumeObjectTO volumeObjectTO : volumeTOs) {
                 String err = null;
                 VMSnapshotDetailsVO snapshotDetailsVO = vmSnapshotDetailsDao.findDetail(vmSnapshot.getId(),
@@ -348,7 +358,7 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                 }
                 String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(volumeObjectTO.getPath(), true);
                 VolumeDetailVO detail = volumeDetailsDao.findDetail(volumeObjectTO.getId(), StorpoolUtil.SP_PROVIDER_NAME);
-                SpApiResponse updateVolumeResponse = StorpoolUtil.volumeUpdateRename(volumeName, "", detail != null ? StorpoolStorageAdaptor.getVolumeNameFromPath(detail.getValue(), false) : null, new SpConnectionDesc(volumeObjectTO.getDataStore().getUuid()));
+                SpApiResponse updateVolumeResponse = StorpoolUtil.volumeUpdateRename(volumeName, "", detail != null ? StorpoolStorageAdaptor.getVolumeNameFromPath(detail.getValue(), false) : null, conn);
 
                 if (updateVolumeResponse.getError() != null) {
                     StorpoolUtil.spLog("StorpoolVMSnapshotStrategy.canHandle - Could not update StorPool's volume %s to it's globalId due to %s", volumeName, updateVolumeResponse.getError().getDescr());

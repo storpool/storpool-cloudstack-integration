@@ -30,6 +30,7 @@ import org.apache.cloudstack.engine.subsystem.api.storage.StrategyPriority;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreVO;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
@@ -69,6 +70,8 @@ public class StorpoolSnapshotStrategy implements SnapshotStrategy {
     private SnapshotService snapshotSvr;
     @Inject
     private SnapshotDataFactory snapshotDataFactory;
+    @Inject
+    private StoragePoolDetailsDao storagePoolDetailsDao;
 
     @Override
     public SnapshotInfo backupSnapshot(SnapshotInfo snapshotInfo) {
@@ -97,7 +100,7 @@ public class StorpoolSnapshotStrategy implements SnapshotStrategy {
         // clean-up snapshot from Storpool storage pools
         StoragePoolVO storage = _primaryDataStoreDao.findById(volume.getPoolId());
         if (storage.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
-            SpConnectionDesc conn = new SpConnectionDesc(storage.getUuid());
+            SpConnectionDesc conn = StorpoolUtil.getSpConnection(storage.getUuid(), storage.getId(), storagePoolDetailsDao, _primaryDataStoreDao);
             SpApiResponse resp = StorpoolUtil.snapshotDelete(name, conn);
             if (resp.getError() != null) {
                 final String err = String.format("Failed to clean-up Storpool snapshot %s. Error: %s", name, resp.getError());
@@ -128,7 +131,7 @@ public class StorpoolSnapshotStrategy implements SnapshotStrategy {
         StoragePoolVO storage = _primaryDataStoreDao.findById(volume.getPoolId());
         String name = StorPoolHelper.getSnapshotName(snapshot.getId(), snapshot.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
         if (storage.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
-            SpConnectionDesc conn = new SpConnectionDesc(storage.getUuid());
+            SpConnectionDesc conn = StorpoolUtil.getSpConnection(storage.getUuid(), storage.getId(), storagePoolDetailsDao, _primaryDataStoreDao);
             if (StorpoolUtil.snapshotExists(name, conn)) {
                 StorpoolUtil.spLog("StorpoolSnapshotStrategy.canHandle: globalId=%s", name);
 

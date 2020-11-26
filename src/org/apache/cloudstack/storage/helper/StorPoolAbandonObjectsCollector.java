@@ -16,10 +16,10 @@ import org.apache.cloudstack.framework.config.ConfigKey;
 import org.apache.cloudstack.framework.config.Configurable;
 import org.apache.cloudstack.managed.context.ManagedContextRunnable;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
-import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
 import org.apache.log4j.Logger;
 
 import com.cloud.utils.component.ManagerBase;
@@ -36,6 +36,8 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
     private static Logger log = Logger.getLogger(StorPoolAbandonObjectsCollector.class);
     @Inject
     private PrimaryDataStoreDao storagePoolDao;
+    @Inject
+    private StoragePoolDetailsDao storagePoolDetailsDao;
 
     private ScheduledExecutorService _volumeTagsUpdateExecutor;
     private static final String ABANDON_LOG = "/var/log/cloudstack/management/storpool-abandoned-objects";
@@ -89,7 +91,7 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
             if (spPools != null && spPools.size() > 0) {
                 Map<String, String> volumes = new HashMap<>();
                 for (StoragePoolVO storagePoolVO : spPools) {
-                    JsonArray arr = StorpoolUtil.volumesList(new SpConnectionDesc(storagePoolVO.getUuid()));
+                    JsonArray arr = StorpoolUtil.volumesList(StorpoolUtil.getSpConnection(storagePoolVO.getUuid(), storagePoolVO.getId(), storagePoolDetailsDao, storagePoolDao));
                     volumes.putAll(getStorPoolNamesAndCsTag(arr));
                 }
                 Transaction.execute(new TransactionCallbackNoReturn() {
@@ -146,7 +148,7 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
             Map<String, String> snapshots = new HashMap<String, String>();
             if (spPools != null && spPools.size() > 0) {
                 for (StoragePoolVO storagePoolVO : spPools) {
-                    JsonArray arr = StorpoolUtil.snapshotsList(new SpConnectionDesc(storagePoolVO.getUuid()));
+                    JsonArray arr = StorpoolUtil.snapshotsList(StorpoolUtil.getSpConnection(storagePoolVO.getUuid(), storagePoolVO.getId(), storagePoolDetailsDao, storagePoolDao));
                     snapshots.putAll(getStorPoolNamesAndCsTag(arr));
                 }
                 Transaction.execute(new TransactionCallbackNoReturn() {

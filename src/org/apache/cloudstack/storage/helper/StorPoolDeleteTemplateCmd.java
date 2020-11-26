@@ -26,6 +26,7 @@ import org.apache.cloudstack.api.response.SuccessResponse;
 import org.apache.cloudstack.engine.subsystem.api.storage.TemplateDataFactory;
 import org.apache.cloudstack.engine.subsystem.api.storage.TemplateInfo;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreVO;
@@ -56,6 +57,8 @@ public class StorPoolDeleteTemplateCmd extends BaseAsyncCmd {
     private VMTemplateDetailsDao vmTemplateDetailDao;
     @Inject
     private PrimaryDataStoreDao primaryDataStoreDao;
+    @Inject
+    private StoragePoolDetailsDao storagePoolDetailsDao;
 
     public StorPoolDeleteTemplateCmd() {
         super();
@@ -114,7 +117,7 @@ public class StorPoolDeleteTemplateCmd extends BaseAsyncCmd {
                     VMTemplateDetailVO detail = vmTemplateDetailDao.findDetail(template.getTemplateId(), StorpoolUtil.SP_STORAGE_POOL_ID);
                     if (detail != null) {
                         StoragePoolVO spPrimary = primaryDataStoreDao.findById(Long.valueOf(detail.getValue()));
-                        SpConnectionDesc conn = new SpConnectionDesc(spPrimary.getUuid());
+                        SpConnectionDesc conn = StorpoolUtil.getSpConnection(spPrimary.getUuid(), spPrimary.getId(), storagePoolDetailsDao, primaryDataStoreDao);
                         SpApiResponse resp = StorpoolUtil.snapshotDelete(snapshotName, conn);
                         if (resp.getError() == null || resp.getError().getName().equals("objectDoesNotExist")) {
                             vmTemplateDetailDao.remove(detail.getId());

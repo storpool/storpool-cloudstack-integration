@@ -26,6 +26,7 @@ import javax.inject.Inject;
 import org.apache.cloudstack.engine.subsystem.api.storage.DataStoreManager;
 import org.apache.cloudstack.engine.subsystem.api.storage.HypervisorHostListener;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
@@ -67,10 +68,15 @@ public class StorpoolHostListener implements HypervisorHostListener {
     private ClusterDao clusterDao;
     @Inject
     private ClusterDetailsDao clusterDetailsDao;
+    @Inject
+    private StoragePoolDetailsDao storagePoolDetailsDao;
 
     @Override
     public boolean hostConnect(long hostId, long poolId) throws StorageConflictException {
         StorpoolUtil.spLog("hostConnect: hostId=%d, poolId=%d", hostId, poolId);
+        //Will update storage pool's connection details if they aren't updated in DB, before connecting pool to host
+        StoragePoolVO poolVO = primaryStoreDao.findById(poolId);
+        StorpoolUtil.getSpConnection(poolVO.getUuid(), poolId, storagePoolDetailsDao, primaryStoreDao);
 
         StoragePool pool = (StoragePool)this.dataStoreMgr.getDataStore(poolId, DataStoreRole.Primary);
         ModifyStoragePoolCommand cmd = new ModifyStoragePoolCommand(true, pool);

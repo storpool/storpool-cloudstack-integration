@@ -408,7 +408,7 @@ class HelperUtil:
     def write_on_disks(cls, random_data_0, virtual_machine, test_dir, random_data):
         try:
             # Login to VM and write data to file system
-            ssh_client = virtual_machine.get_ssh_client()
+            ssh_client = virtual_machine.get_ssh_client(reconnect = True)
 
             cmds = [
                 "echo %s > %s/%s" %
@@ -442,7 +442,7 @@ class HelperUtil:
         )
 
         try:
-            ssh_client = virtual_machine.get_ssh_client()
+            ssh_client = virtual_machine.get_ssh_client(reconnect = True)
      
             cmds = [
                 "rm -rf %s/%s" % (test_dir, random_data),
@@ -1001,25 +1001,25 @@ class HelperUtil:
                           default= os.path.join(default_dir, "cloudstack")
                           )
         parser.add_argument("-1", "--remote1",action='store',
-                          help="Remote IP of first hypervisor"
+                          help="Remote IP of hypervisor"
                           )
         parser.add_argument("-2", "--remote2",action='store',
-                          help="Remote IP of second hypervisor"
+                          help="Remote IP of hypervisor"
                           )
         parser.add_argument("-3", "--remote3",action='store',
-                          help="Remote IP of third hypervisor",
+                          help="Remote IP of hypervisor",
                           default=""
                           )
         parser.add_argument("-4", "--remote4",action='store',
-                          help="Remote IP of fourth hypervisor",
+                          help="Remote IP of hypervisor",
                           default=""
                           )
         parser.add_argument("-5", "--remote5",action='store',
-                          help="Remote IP of fourth hypervisor",
+                          help="Remote IP of hypervisor",
                           default=""
                           )
         parser.add_argument("-6", "--remote6",action='store',
-                          help="Remote IP of fourth hypervisor",
+                          help="Remote IP of hypervisor",
                           default=""
                           )
         parser.add_argument('unittest_args', nargs='*')
