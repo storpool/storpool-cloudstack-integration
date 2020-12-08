@@ -60,7 +60,7 @@ public class StorpoolStoragePool implements KVMStoragePool {
 
     @Override
     public long getCapacity() {
-        return 0;
+        return 100L*(1024L*1024L*1024L*1024L*1024L);
     }
 
     @Override
