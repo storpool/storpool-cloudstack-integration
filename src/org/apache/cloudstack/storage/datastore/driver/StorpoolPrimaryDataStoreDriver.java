@@ -569,7 +569,11 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         answer = new CopyCmdAnswer(dstTO);
                     }
                 }else {
-                  //  name = conn.getTemplateName() + "-" + tinfo.getUuid();
+                    if (snapshotName != null) {
+                        //if snapshot was deleted by any reason from StorPool we have to delete it from CloudStack's DB as well
+                        templDataStoreVO.setLocalDownloadPath("");
+                        vmTemplateDataStoreDao.update(templDataStoreVO.getId(), templDataStoreVO);
+                    }
                     resp = StorpoolUtil.volumeCreate(name, null, size, null, "no", "template", null, conn);
                     if (resp.getError() != null) {
                         err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
