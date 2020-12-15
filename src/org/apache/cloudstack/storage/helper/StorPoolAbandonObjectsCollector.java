@@ -3,7 +3,9 @@ package org.apache.cloudstack.storage.helper;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -85,7 +87,11 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
         protected void runInContext() {
             List<StoragePoolVO> spPools = storagePoolDao.findPoolsByProvider(StorpoolUtil.SP_PROVIDER_NAME);
             if (spPools != null && spPools.size() > 0) {
-                JsonArray arr = StorpoolUtil.volumesList(new SpConnectionDesc(spPools.get(0).getUuid()));
+                Map<String, String> volumes = new HashMap<>();
+                for (StoragePoolVO storagePoolVO : spPools) {
+                    JsonArray arr = StorpoolUtil.volumesList(new SpConnectionDesc(storagePoolVO.getUuid()));
+                    volumes.putAll(getStorPoolNamesAndCsTag(arr));
+                }
                 Transaction.execute(new TransactionCallbackNoReturn() {
                     @Override
                     public void doInTransactionWithoutResult(TransactionStatus status) {
@@ -104,11 +110,8 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
 
                         try (PreparedStatement pstmt = txn
                                 .prepareStatement("INSERT INTO `cloud`.`volumes1` (name, tag) VALUES (?, ?)")) {
-                            for (int i = 0; i < arr.size(); i++) {
-                                JsonObject tags = arr.get(i).getAsJsonObject().get("tags").getAsJsonObject();
-                                if (tags.getAsJsonPrimitive("cs") != null && !arr.get(i).getAsJsonObject().get("name").getAsString().startsWith("*")) {
-                                    addRecordToDb(arr, pstmt, i, tags, true);
-                                }
+                            for (Map.Entry<String, String> volume : volumes.entrySet()) {
+                                addRecordToDb(volume.getKey(), pstmt, volume.getValue(), true);
                             }
                             pstmt.executeBatch();
                             String sql = "SELECT f.* FROM `cloud`.`volumes1` f LEFT JOIN `cloud`.`volumes` v ON f.name=v.path where v.path is NULL OR NOT state=?";
@@ -140,8 +143,12 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
         @DB
         protected void runInContext() {
             List<StoragePoolVO> spPools = storagePoolDao.findPoolsByProvider(StorpoolUtil.SP_PROVIDER_NAME);
+            Map<String, String> snapshots = new HashMap<String, String>();
             if (spPools != null && spPools.size() > 0) {
-                JsonArray arr = StorpoolUtil.snapshotsList(new SpConnectionDesc(spPools.get(0).getUuid()));
+                for (StoragePoolVO storagePoolVO : spPools) {
+                    JsonArray arr = StorpoolUtil.snapshotsList(new SpConnectionDesc(storagePoolVO.getUuid()));
+                    snapshots.putAll(getStorPoolNamesAndCsTag(arr));
+                }
                 Transaction.execute(new TransactionCallbackNoReturn() {
                     @Override
                     public void doInTransactionWithoutResult(TransactionStatus status) {
@@ -171,19 +178,13 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
                             PreparedStatement snapshotsPstmt = txn.prepareStatement("INSERT INTO `cloud`.`snapshots1` (name, tag) VALUES (?, ?)");
                             PreparedStatement groupSnapshotsPstmt = txn.prepareStatement("INSERT INTO `cloud`.`vm_snapshots1` (name, tag) VALUES (?, ?)");
                             PreparedStatement templatePstmt = txn.prepareStatement("INSERT INTO `cloud`.`vm_templates1` (name, tag) VALUES (?, ?)");
-                            for (int i = 0; i < arr.size(); i++) {
-                                JsonObject tags = arr.get(i).getAsJsonObject().get("tags").getAsJsonObject();
-                                if (tags.getAsJsonPrimitive("cs") != null
-                                        && !tags.getAsJsonPrimitive("cs").getAsString().equals("group")
-                                        && !tags.getAsJsonPrimitive("cs").getAsString().equals("template")
-                                        && !arr.get(i).getAsJsonObject().get("deleted").getAsBoolean()) {
-                                    addRecordToDb(arr, snapshotsPstmt, i, tags, true);
-                                } else if (tags.getAsJsonPrimitive("cs") != null
-                                        && tags.getAsJsonPrimitive("cs").getAsString().equals("group") && !arr.get(i).getAsJsonObject().get("deleted").getAsBoolean()) {
-                                    addRecordToDb(arr, groupSnapshotsPstmt, i, tags, true);
-                                } else if (tags.getAsJsonPrimitive("cs") != null
-                                        && tags.getAsJsonPrimitive("cs").getAsString().equals("template") && !arr.get(i).getAsJsonObject().get("deleted").getAsBoolean()) {
-                                    addRecordToDb(arr, templatePstmt, i, tags, true);
+                            for (Map.Entry<String, String> snapshot : snapshots.entrySet()) {
+                                if (!snapshot.getValue().equals("group") && !snapshot.getValue().equals("template")) {
+                                    addRecordToDb(snapshot.getKey(), snapshotsPstmt, snapshot.getValue(), true);
+                                } else if (snapshot.getValue().equals("group")) {
+                                    addRecordToDb(snapshot.getKey(), groupSnapshotsPstmt, snapshot.getValue(), true);
+                                } else if (snapshot.getValue().equals("template")) {
+                                    addRecordToDb(snapshot.getKey(), templatePstmt, snapshot.getValue(), true);
                                 }
                             }
                             snapshotsPstmt.executeBatch();
@@ -231,12 +232,11 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
         }
     }
 
-    private void addRecordToDb(JsonArray arr, PreparedStatement pstmt, int i, JsonObject tags, boolean pathNeeded)
+    private void addRecordToDb(String name, PreparedStatement pstmt, String tag, boolean pathNeeded)
             throws SQLException {
-        String name = arr.get(i).getAsJsonObject().get("name").getAsString();
         name = name.startsWith("~") ? name.split("~")[1] : name;
         pstmt.setString(1, pathNeeded ? StorpoolUtil.devPath(name) : name);
-        pstmt.setString(2, tags.getAsJsonPrimitive("cs").getAsString());
+        pstmt.setString(2, tag);
         pstmt.addBatch();
     }
 
@@ -253,5 +253,21 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
             log.info(String.format(
                     "CloudStack does not know about StorPool %s %s, it had to be a %s", object, name, rs.getString(3)));
         }
+    }
+
+    private Map<String,String> getStorPoolNamesAndCsTag(JsonArray arr) {
+        Map<String, String> map = new HashMap<>();
+        for (int i = 0; i < arr.size(); i++) {
+            String name = arr.get(i).getAsJsonObject().get("name").getAsString();
+            String tag = null;
+            if (!name.startsWith("*") && !name.contains("@")) {
+                JsonObject tags = arr.get(i).getAsJsonObject().get("tags").getAsJsonObject();
+                if (tags != null && tags.getAsJsonPrimitive("cs") != null && !(arr.get(i).getAsJsonObject().get("deleted") != null && arr.get(i).getAsJsonObject().get("deleted").getAsBoolean())) {
+                    tag = tags.getAsJsonPrimitive("cs").getAsString();
+                    map.put(name, tag);
+                }
+            }
+        }
+        return map;
     }
 }
