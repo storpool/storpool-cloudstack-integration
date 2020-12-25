@@ -180,8 +180,6 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
             String res = sc.execute(parser);
             if (res != null) {
                 err = String.format("Unable to %s volume %s. Error: %s", command, name, res);
-                SP_LOG(err);
-                log.warn(err);
 
                 if (command.equals("detach")) {
                     try {
@@ -199,6 +197,8 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
         }
 
         if (err != null) {
+            SP_LOG(err);
+            log.warn(err);
             throw new CloudRuntimeException(err);
         }
 
