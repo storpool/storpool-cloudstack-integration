@@ -99,9 +99,15 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
                     public void doInTransactionWithoutResult(TransactionStatus status) {
                         TransactionLegacy txn = TransactionLegacy.open(TransactionLegacy.CLOUD_DB);
 
-                        try (PreparedStatement pstmt = txn.prepareAutoCloseStatement(
-                                "CREATE TEMPORARY TABLE `cloud`.`volumes1`(`id` bigint unsigned NOT NULL auto_increment, `name` varchar(255) NOT NULL,`tag` varchar(255) NOT NULL, PRIMARY KEY (`id`))")) {
+                        try {
+                            PreparedStatement pstmt = txn.prepareAutoCloseStatement(
+                                    "CREATE TEMPORARY TABLE `cloud`.`volumes1`(`id` bigint unsigned NOT NULL auto_increment, `name` varchar(255) NOT NULL,`tag` varchar(255) NOT NULL, PRIMARY KEY (`id`))");
                             pstmt.executeUpdate();
+
+                            pstmt = txn.prepareAutoCloseStatement(
+                                    "CREATE TEMPORARY TABLE `cloud`.`volumes_on_host1`(`id` bigint unsigned NOT NULL auto_increment, `name` varchar(255) NOT NULL,`tag` varchar(255) NOT NULL, PRIMARY KEY (`id`))");
+                            pstmt.executeUpdate();
+
                         } catch (SQLException e) {
                             log.info(String.format("[ignored] SQL failed to delete vm work job: %s ",
                                     e.getLocalizedMessage()));
@@ -110,22 +116,34 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
                                     e.getLocalizedMessage()));
                         }
 
-                        try (PreparedStatement pstmt = txn
-                                .prepareStatement("INSERT INTO `cloud`.`volumes1` (name, tag) VALUES (?, ?)")) {
+                        try {
+                            PreparedStatement pstmt = txn.prepareStatement("INSERT INTO `cloud`.`volumes1` (name, tag) VALUES (?, ?)");
+                            PreparedStatement volumesOnHostpstmt = txn.prepareStatement("INSERT INTO `cloud`.`volumes_on_host1` (name, tag) VALUES (?, ?)");
                             for (Map.Entry<String, String> volume : volumes.entrySet()) {
-                                addRecordToDb(volume.getKey(), pstmt, volume.getValue(), true);
+                                if (volume.getValue().equals("volume")) {
+                                    addRecordToDb(volume.getKey(), pstmt, volume.getValue(), true);
+                                } else if (volume.getValue().equals("check-volume-is-on-host")) {
+                                    addRecordToDb(volume.getKey(), volumesOnHostpstmt, volume.getValue(), true);
+                                }
                             }
                             pstmt.executeBatch();
+                            volumesOnHostpstmt.executeBatch();
                             String sql = "SELECT f.* FROM `cloud`.`volumes1` f LEFT JOIN `cloud`.`volumes` v ON f.name=v.path where v.path is NULL OR NOT state=?";
                             findMissingRecordsInCS(txn, sql, "volume");
+
+                            String sqlVolumeOnHost = "SELECT f.* FROM `cloud`.`volumes_on_host1` f LEFT JOIN `cloud`.`storage_pool_details` v ON f.name=v.value where v.value is NULL";
+                            findMissingRecordsInCS(txn, sqlVolumeOnHost, "volumes_on_host");
                         } catch (SQLException e) {
-                            log.info(String.format("[ignored] SQL failed to delete vm work job: %s ",
+                            log.info(String.format("[ignored] SQL failed due to: %s ",
                                     e.getLocalizedMessage()));
                         } catch (Throwable e) {
-                            log.info(String.format("[ignored] caught an error during delete vm work job: %s",
+                            log.info(String.format("[ignored] caught an error: %s",
                                     e.getLocalizedMessage()));
                         } finally {
-                            try (PreparedStatement pstmt = txn.prepareStatement("DROP TABLE `cloud`.`volumes1`")) {
+                            try {
+                                PreparedStatement pstmt = txn.prepareStatement("DROP TABLE `cloud`.`volumes1`");
+                                pstmt.executeUpdate();
+                                pstmt = txn.prepareStatement("DROP TABLE `cloud`.`volumes_on_host1`");
                                 pstmt.executeUpdate();
                             } catch (SQLException e) {
                                 txn.close();
@@ -209,10 +227,10 @@ public class StorPoolAbandonObjectsCollector extends ManagerBase implements Conf
                                     + " and spool.local_path is NULL";
                             findMissingRecordsInCS(txn, sqlTemplates, "snapshot");
                         } catch (SQLException e) {
-                            log.info(String.format("[ignored] SQL failed to delete vm work job: %s ",
+                            log.info(String.format("[ignored] SQL failed due to: %s ",
                                     e.getLocalizedMessage()));
                         } catch (Throwable e) {
-                            log.info(String.format("[ignored] caught an error during delete vm work job: %s",
+                            log.info(String.format("[ignored] caught an error: %s",
                                     e.getLocalizedMessage()));
                         } finally {
                             try {

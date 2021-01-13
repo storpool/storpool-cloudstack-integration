@@ -137,6 +137,8 @@ public class StorpoolUtil {
 
     public static final String SP_AUTH_TOKEN = "SP_AUTH_TOKEN";
 
+    public static final String SP_VOLUME_ON_CLUSTER = "SP_VOLUME_ON_CLUSTER";
+
     public static enum StorpoolRights {
         RO("ro"),
         RW("rw"),
@@ -492,6 +494,17 @@ public class StorpoolUtil {
         json.put("size", size);
         json.put("template", conn.getTemplateName());
         Map<String, String> tags = StorPoolHelper.addStorPoolTags(name, vmUuid, csTag, vcPolicy);
+        json.put("tags", tags);
+        return POST("MultiCluster/VolumeCreate", json, conn);
+    }
+
+    public static SpApiResponse volumeCreate(SpConnectionDesc conn) {
+        Map<String, Object> json = new LinkedHashMap<>();
+        json.put("name", "");
+        json.put("size", 512);
+        json.put("template", conn.getTemplateName());
+        Map<String, String> tags = new HashMap<>();
+        tags.put("cs", "check-volume-is-on-host");
         json.put("tags", tags);
         return POST("MultiCluster/VolumeCreate", json, conn);
     }
