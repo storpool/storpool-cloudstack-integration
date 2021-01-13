@@ -289,6 +289,13 @@ public class StorpoolPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCy
         }
         boolean isDeleted = dataStoreHelper.deletePrimaryDataStore(store);
         if (isDeleted) {
+            List<StoragePoolDetailVO> volumesOnHosts = storagePoolDetailsDao.listDetails(storagePoolId);
+            for (StoragePoolDetailVO storagePoolDetailVO : volumesOnHosts) {
+                if (storagePoolDetailVO.getValue() != null && storagePoolDetailVO.getName().contains(StorpoolUtil.SP_VOLUME_ON_CLUSTER)) {
+                    StorpoolUtil.volumeDelete(StorpoolStorageAdaptor.getVolumeNameFromPath(storagePoolDetailVO.getValue(), true),
+                            StorpoolUtil.getSpConnection(store.getUuid(), store.getId(), storagePoolDetailsDao, _primaryDataStoreDao));
+                }
+            }
             storagePoolDetailsDao.removeDetails(storagePoolId);
         }
         return isDeleted;
