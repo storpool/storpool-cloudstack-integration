@@ -47,6 +47,7 @@ from marvin.lib.base import (Account,
                              VmSnapshot,
                              Volume,
                              DiskOffering,
+                             SecurityGroup,
                              )
 from marvin.lib.common import (get_zone,
                                get_domain,
@@ -67,7 +68,8 @@ from nose.plugins.attrib import attr
 
 from storpool import spapi
 import uuid
-from logs_and_commands import (TestData, HelperUtil, cfg,)
+from sp_util import (TestData, StorPoolHelper)
+
 
 class TestResizeVolumes(cloudstackTestCase):
     vm = ""
@@ -77,10 +79,20 @@ class TestResizeVolumes(cloudstackTestCase):
 
     @classmethod
     def setUpClass(cls):
+        super(TestResizeVolumes, cls).setUpClass()
+        try:
+            cls.setUpCloudStack()
+        except Exception:
+            cls.cleanUpCloudStack()
+            raise
+
+    @classmethod
+    def setUpCloudStack(cls):
+        cls._cleanup = []
+
         cls.spapi = spapi.Api.fromConfig(multiCluster=True)
         testClient = super(TestResizeVolumes, cls).getClsTestClient()
         cls.apiclient = testClient.getApiClient()
-        cls.helper = HelperUtil(cls)
         cls.unsupportedHypervisor = False
         cls.hypervisor = testClient.getHypervisorInfo()
         if cls.hypervisor.lower() in ("hyperv", "lxc"):
@@ -97,39 +109,28 @@ class TestResizeVolumes(cloudstackTestCase):
         for z in zones:
             if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
                 cls.zone = z
-        storpool_primary_storage = {
-            "name" : "ssd",
-            "zoneid": cls.zone.id,
-            "url": "ssd",
-            "scope": "zone",
-            "capacitybytes": 15546641111121,
-            "hypervisor": "kvm",
-            "provider": "StorPool",
-            "tags": "ssd"
-            }
 
-        storpool_service_offerings = {
-            "name": "iops",
-            "displaytext": "Testing IOPS on StorPool",
-            "cpunumber": 1,
-            "cpuspeed": 500,
-            "memory": 512,
-            "storagetype": "shared",
-            "customizediops": True,
-            "tags": "ssd",
-            }
+        td = TestData()
+        cls.testdata = td.testdata
+        cls.helper = StorPoolHelper()
+
+        storpool_primary_storage = cls.testdata[TestData.primaryStorage]
+
+        cls.template_name = storpool_primary_storage.get("name")
+
+        storpool_service_offerings = cls.testdata[TestData.serviceOfferingsIops]
 
         storpool_disk_offerings = {
             "name": "iops",
             "displaytext": "Testing IOPS on StorPool",
             "customizediops": True,
             "storagetype": "shared",
-            "tags" : "ssd",
+            "tags" : cls.template_name,
             }
 
         storage_pool = list_storage_pools(
             cls.apiclient,
-            name='ssd'
+            name = cls.template_name
             )
 
         service_offerings = list_service_offering(
@@ -176,67 +177,87 @@ class TestResizeVolumes(cloudstackTestCase):
         cls.services["templates"]["ostypeid"] = template.ostypeid
         cls.services["zoneid"] = cls.zone.id
 
+        cls.account = cls.helper.create_account(
+                            cls.apiclient,
+                            cls.services["account"],
+                            accounttype = 1,
+                            domainid=cls.domain.id,
+                            )
+        cls._cleanup.append(cls.account)
+
+        securitygroup = SecurityGroup.list(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid)[0]
+        cls.helper.set_securityGroups(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid, id = securitygroup.id)
 
         cls.service_offering = service_offerings
         cls.debug(pprint.pformat(cls.service_offering))
 
-        cls.local_cluster = cls.get_local_cluster(zoneid = cls.zone.id)
-        cls.host = cls.list_hosts_by_cluster_id(cls.local_cluster.id)
+        cls.local_cluster = cls.helper.get_local_cluster(cls.apiclient, zoneid = cls.zone.id)
+        cls.host = cls.helper.list_hosts_by_cluster_id(cls.apiclient, cls.local_cluster.id)
 
         assert len(cls.host) > 1, "Hosts list is less than 1"
         cls.host_on_local_1 = cls.host[0]
         cls.host_on_local_2 = cls.host[1]
 
-        cls.remote_cluster = cls.get_remote_cluster(zoneid = cls.zone.id)
-        cls.host_remote = cls.list_hosts_by_cluster_id(cls.remote_cluster.id)
+        cls.remote_cluster = cls.helper.get_remote_cluster(cls.apiclient, zoneid = cls.zone.id)
+        cls.host_remote = cls.helper.list_hosts_by_cluster_id(cls.apiclient, cls.remote_cluster.id)
         assert len(cls.host_remote) > 1, "Hosts list is less than 1"
 
         cls.host_on_remote1 = cls.host_remote[0]
         cls.host_on_remote2 = cls.host_remote[1]
 
-        cls.volume_1 = cls.create_custom_disk(
+        cls.volume_1 = cls.helper.create_custom_disk(
             cls.apiclient,
             {"diskname":"StorPoolDisk" },
             zoneid=cls.zone.id,
             size = 5,
             miniops = 2000,
             maxiops = 5000,
+            account=cls.account.name,
+            domainid=cls.account.domainid,
             diskofferingid=cls.disk_offerings.id,
         )
-        cls.volume_2 = cls.create_custom_disk(
+        cls.volume_2 = cls.helper.create_custom_disk(
             cls.apiclient,
             {"diskname":"StorPoolDisk" },
             zoneid=cls.zone.id,
             size = 5,
             miniops = 2000,
             maxiops = 5000,
+            account=cls.account.name,
+            domainid=cls.account.domainid,
             diskofferingid=cls.disk_offerings.id,
         )
-        cls.volume = cls.create_custom_disk(
+        cls.volume = cls.helper.create_custom_disk(
             cls.apiclient,
             {"diskname":"StorPoolDisk" },
             zoneid=cls.zone.id,
             size = 5,
             miniops = 2000,
             maxiops = 5000,
+            account=cls.account.name,
+            domainid=cls.account.domainid,
             diskofferingid=cls.disk_offerings.id,
         )
-        cls.virtual_machine = cls.create_vm_custom(
+        cls.virtual_machine = cls.helper.create_vm_custom(
             cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            account=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=cls.service_offering.id,
             hypervisor=cls.hypervisor,
             minIops = 1000,
             maxIops = 5000,
             rootdisksize = 10
         )
-        cls.virtual_machine2= cls.create_vm_custom(
+        cls.virtual_machine2= cls.helper.create_vm_custom(
             cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            account=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=cls.service_offering.id,
             hypervisor=cls.hypervisor,
             minIops = 1000,
@@ -244,11 +265,13 @@ class TestResizeVolumes(cloudstackTestCase):
             rootdisksize = 10
         )
 
-        cls.virtual_machine_live_migration_1 = cls.create_vm_custom(
+        cls.virtual_machine_live_migration_1 = cls.helper.create_vm_custom(
             cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            account=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=cls.service_offering.id,
             hypervisor=cls.hypervisor,
             minIops = 1000,
@@ -256,11 +279,13 @@ class TestResizeVolumes(cloudstackTestCase):
             hostid = cls.host_on_local_1.id,
             rootdisksize = 10
         )
-        cls.virtual_machine_live_migration_2= cls.create_vm_custom(
+        cls.virtual_machine_live_migration_2= cls.helper.create_vm_custom(
             cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            account=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=cls.service_offering.id,
             hypervisor=cls.hypervisor,
             minIops = 1000,
@@ -273,16 +298,14 @@ class TestResizeVolumes(cloudstackTestCase):
         cls.random_data_0 = random_gen(size=100)
         cls.test_dir = "/tmp"
         cls.random_data = "random.data"
-        cls._cleanup = []
-        cls._cleanup.append(cls.virtual_machine)
-        cls._cleanup.append(cls.virtual_machine2)
-        cls._cleanup.append(cls.volume_1)
-        cls._cleanup.append(cls.volume_2)
-        cls._cleanup.append(cls.volume)
         return
 
     @classmethod
     def tearDownClass(cls):
+        cls.cleanUpCloudStack()
+
+    @classmethod
+    def cleanUpCloudStack(cls):
         try:
             # Cleanup resources used
             cleanup_resources(cls.apiclient, cls._cleanup)
@@ -313,14 +336,14 @@ class TestResizeVolumes(cloudstackTestCase):
 
         volumes = list_volumes(
             self.apiclient,
-            virtualmachineid = self.virtual_machine.id,
+            virtualmachineid = self.virtual_machine.id, listall = True
             )
 
         for v in volumes:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
         self.volume_1 = Volume.resize(self.volume_1, self.apiclient, maxiops = 4000)
-        self.check_storpool_volume_iops(self.volume_1)
+        self.helper.check_storpool_volume_iops(self.spapi, self.volume_1)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_02_resize_iops_detached_volume(self):
@@ -332,7 +355,7 @@ class TestResizeVolumes(cloudstackTestCase):
             self.volume_1
             )
         self.volume_1 = Volume.resize(self.volume_1, self.apiclient, maxiops = 10000)
-        self.check_storpool_volume_iops(self.volume_1)
+        self.helper.check_storpool_volume_iops(self.spapi, self.volume_1)
        
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_03_resize_iops_root_volume(self):
@@ -344,9 +367,10 @@ class TestResizeVolumes(cloudstackTestCase):
                 virtualmachineid=
                 self.virtual_machine.id,
                 type='ROOT',
+                listall = True
             )
-        vol = self.resize_volume(apiclient = self.apiclient, volume = vol[0], shrinkOk = False, maxiops = 15000)
-        self.check_storpool_volume_iops(vol)
+        vol = self.helper.resize_volume(apiclient = self.apiclient, volume = vol[0], shrinkOk = False, maxiops = 15000)
+        self.helper.check_storpool_volume_iops(self.spapi, vol)
     
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_04_iops_root_volume_reverted(self):
@@ -357,8 +381,9 @@ class TestResizeVolumes(cloudstackTestCase):
                 virtualmachineid=
                 self.virtual_machine.id,
                 type='ROOT',
+                listall = True,
             )
-        self.check_storpool_volume_iops(vol[0])
+        self.helper.check_storpool_volume_iops(self.spapi, vol[0])
 
         snapshot = Snapshot.create(self.apiclient, vol[0].id,)
         reverted_snapshot1 = Volume.revertToSnapshot(self.apiclient, volumeSnapshotId = snapshot.id)
@@ -367,8 +392,9 @@ class TestResizeVolumes(cloudstackTestCase):
                 virtualmachineid=
                 self.virtual_machine.id,
                 type='ROOT',
+                listall = True,
             )
-        self.check_storpool_volume_iops(vol[0])
+        self.helper.check_storpool_volume_iops(self.spapi, vol[0])
 
 ### test live migration with max iops
 
@@ -378,9 +404,9 @@ class TestResizeVolumes(cloudstackTestCase):
         Migrate VMs/Volumes live
         """
         global vm
-        destinationHost = self.getDestinationHost(self.virtual_machine_live_migration_1.hostid, self.host)
+        destinationHost = self.helper.getDestinationHost(self.virtual_machine_live_migration_1.hostid, self.host)
         # Migrate the VM
-        vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
+        vm = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_1, destinationHost)
         # self.check_files(vm,destinationHost)
 
 
@@ -389,15 +415,15 @@ class TestResizeVolumes(cloudstackTestCase):
         """
         # Get all volumes to be migrated
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
-        vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
+        vm = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_1, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_06_migrate_vm_live_attach_disk(self):
@@ -407,13 +433,15 @@ class TestResizeVolumes(cloudstackTestCase):
         
         global vm
         global data_disk_1
-        data_disk_1 = self.create_custom_disk(
+        data_disk_1 = self.helper.create_custom_disk(
             self.apiclient,
             {"diskname":"StorPoolDisk" },
             zoneid=self.zone.id,
             size = 5,
             miniops = 2000,
             maxiops = 5000,
+            account=self.account.name,
+            domainid=self.account.domainid,
             diskofferingid=self.disk_offerings.id,
         )
 
@@ -424,10 +452,10 @@ class TestResizeVolumes(cloudstackTestCase):
             data_disk_1
         )
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_1, destinationHost)
 
 
         self.virtual_machine_live_migration_1.attach_volume(
@@ -435,14 +463,14 @@ class TestResizeVolumes(cloudstackTestCase):
             self.volume
         )
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient,vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_1, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient,vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_07_migrate_vm_live_with_snapshots(self):
@@ -466,14 +494,14 @@ class TestResizeVolumes(cloudstackTestCase):
             )
         # Migrate all volumes and VMs
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_1, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -484,16 +512,16 @@ class TestResizeVolumes(cloudstackTestCase):
         global vm
         global data_disk_1
 
-        vol = self.resize_volume(apiclient = self.apiclient, volume = data_disk_1, shrinkOk = False, maxiops = 15000)
+        vol = self.helper.resize_volume(apiclient = self.apiclient, volume = data_disk_1, shrinkOk = False, maxiops = 15000)
         # Migrate all volumes and VMs
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_1, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_09_migrate_vm_live_restore(self):
@@ -508,19 +536,16 @@ class TestResizeVolumes(cloudstackTestCase):
         )
         # Migrate the VM and its volumes
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm = self.migrateVm(self.virtual_machine_live_migration_1, destinationHost)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_1, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm, self.host)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm, self.host)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
-        cmd = destroyVirtualMachine.destroyVirtualMachineCmd()
-        cmd.id = self.virtual_machine_live_migration_1.id
-        cmd.expunge = True
-        self.apiclient.destroyVirtualMachine(cmd)
+        self.helper.destroy_vm(self.apiclient, self.virtual_machine_live_migration_1.id)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_10_migrate_live_remote(self):
@@ -528,9 +553,9 @@ class TestResizeVolumes(cloudstackTestCase):
         Migrate VMs/Volumes live
         """
         global vm2
-        destinationHost = self.getDestinationHost(self.virtual_machine_live_migration_2.hostid, self.host_remote)
+        destinationHost = self.helper.getDestinationHost(self.virtual_machine_live_migration_2.hostid, self.host_remote)
         # Migrate the VM
-        vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
+        vm2 = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_2, destinationHost)
         # self.check_files(vm,destinationHost)
 
 
@@ -539,14 +564,14 @@ class TestResizeVolumes(cloudstackTestCase):
         """
         # Get all volumes to be migrated
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm2, self.host_remote)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm2 = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_2, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm2, self.host_remote)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_11_migrate_vm_live_attach_disk_on_remote(self):
@@ -556,13 +581,15 @@ class TestResizeVolumes(cloudstackTestCase):
         
         global vm2
         global data_disk_2
-        data_disk_2 = self.create_custom_disk(
+        data_disk_2 = self.helper.create_custom_disk(
             self.apiclient,
             {"diskname":"StorPoolDisk" },
             zoneid=self.zone.id,
             size = 5,
             miniops = 2000,
             maxiops = 5000,
+            account=self.account.name,
+            domainid=self.account.domainid,
             diskofferingid=self.disk_offerings.id,
         )
 
@@ -573,10 +600,10 @@ class TestResizeVolumes(cloudstackTestCase):
             data_disk_2
         )
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm2, self.host_remote)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm2 = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_2, destinationHost)
 
 
         self.virtual_machine_live_migration_2.attach_volume(
@@ -584,10 +611,10 @@ class TestResizeVolumes(cloudstackTestCase):
             self.volume_2
         )
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm2, self.host_remote)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm2 = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_2, destinationHost)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_12_migrate_vm_live_with_snapshots_on_remote(self):
@@ -611,13 +638,13 @@ class TestResizeVolumes(cloudstackTestCase):
             )
         # Migrate all volumes and VMs
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm2, self.host_remote)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm2 = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_2, destinationHost)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm2, self.host_remote)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_13_migrate_vm_live_resize_volume_on_remote(self):
@@ -627,16 +654,16 @@ class TestResizeVolumes(cloudstackTestCase):
         global vm2
         global data_disk_2
 
-        vol = self.resize_volume(apiclient = self.apiclient, volume = data_disk_1, shrinkOk = False, maxiops = 15000)
+        vol = self.helper.resize_volume(apiclient = self.apiclient, volume = data_disk_1, shrinkOk = False, maxiops = 15000)
 
         # Migrate all volumes and VMs
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm2, self.host_remote)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm2 = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_2, destinationHost)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm2, self.host_remote)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_14_migrate_vm_live_restore_on_remote(self):
@@ -651,294 +678,14 @@ class TestResizeVolumes(cloudstackTestCase):
         )
         # Migrate the VM and its volumes
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm2, self.host_remote)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
-        vm2 = self.migrateVm(self.virtual_machine_live_migration_2, destinationHost)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
+        vm2 = self.helper.migrateVm(self.apiclient, self.virtual_machine_live_migration_2, destinationHost)
 
-        destinationHost,  vol_list = self.get_destination_pools_hosts(vm2, self.host_remote)
+        destinationHost,  vol_list = self.helper.get_destination_pools_hosts(self.apiclient, vm2, self.host_remote)
         for v in vol_list:
-            self.check_storpool_volume_iops(v)
+            self.helper.check_storpool_volume_iops(self.spapi, v)
 
-        cmd = destroyVirtualMachine.destroyVirtualMachineCmd()
-        cmd.id = self.virtual_machine_live_migration_2.id
-        cmd.expunge = True
-        self.apiclient.destroyVirtualMachine(cmd)
+        self.helper.destroy_vm(self.apiclient, self.virtual_machine_live_migration_2.id)
 
-    @classmethod
-    def get_local_cluster(cls, zoneid):
-       storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
-       clusterid = storpool_clusterid.split("=")
-       cls.debug(storpool_clusterid)
-       clusters = list_clusters(cls.apiclient, zoneid = zoneid)
-       for c in clusters:
-           configuration = list_configurations(
-               cls.apiclient,
-               clusterid = c.id
-               )
-           for conf in configuration:
-               if conf.name == 'sp.cluster.id'  and (conf.value in clusterid[1]):
-                   return c
-
-    @classmethod
-    def get_remote_cluster(cls, zoneid):
-       storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
-       clusterid = storpool_clusterid.split("=")
-       cls.debug(storpool_clusterid)
-       clusters = list_clusters(cls.apiclient, zoneid = zoneid)
-       for c in clusters:
-           configuration = list_configurations(
-               cls.apiclient,
-               clusterid = c.id
-               )
-           for conf in configuration:
-               if conf.name == 'sp.cluster.id'  and (conf.value not in clusterid[1]):
-                   return c
-
-    @classmethod
-    def list_hosts_by_cluster_id(cls, clusterid):
-        """List all Hosts matching criteria"""
-        cmd = listHosts.listHostsCmd()
-        cmd.clusterid = clusterid  
-        return(cls.apiclient.listHosts(cmd))
-    
-    @classmethod
-    def migrateVmWithVolumes(self, vm, destinationHost, volumes, pool):
-        """
-            This method is used to migrate a vm and its volumes using migrate virtual machine with volume API
-            INPUTS:
-                   1. vm -> virtual machine object
-                   2. destinationHost -> the host to which VM will be migrated
-                   3. volumes -> list of volumes which are to be migrated
-                   4. pools -> list of destination pools
-        """
-        vol_pool_map = {vol.id: pool.id for vol in volumes}
-    
-        cmd = migrateVirtualMachineWithVolume.migrateVirtualMachineWithVolumeCmd()
-        cmd.hostid = destinationHost.id
-        cmd.migrateto = []
-        cmd.virtualmachineid = self.virtual_machine.id
-        for volume, pool1 in vol_pool_map.items():
-            cmd.migrateto.append({
-                'volume': volume,
-                'pool': pool1
-        })
-        self.apiclient.migrateVirtualMachineWithVolume(cmd)
-
-        vm.getState(
-            self.apiclient,
-            "Running"
-        )
-        # check for the VM's host and volume's storage post migration
-        migrated_vm_response = list_virtual_machines(self.apiclient, id=vm.id)
-        assert isinstance(migrated_vm_response, list), "Check list virtual machines response for valid list"
-
-        assert migrated_vm_response[0].hostid == destinationHost.id, "VM did not migrate to a specified host"
-    
-        for vol in volumes:
-            migrated_volume_response = list_volumes(
-                self.apiclient,
-                virtualmachineid=migrated_vm_response[0].id,
-                name=vol.name,
-                listall=True)
-            assert isinstance(migrated_volume_response, list), "Check list virtual machines response for valid list"
-            assert migrated_volume_response[0].storageid == pool.id, "Volume did not migrate to a specified pool"
-    
-            assert str(migrated_volume_response[0].state).lower().eq('ready'), "Check migrated volume is in Ready state"
-    
-            return migrated_vm_response[0]
-
-    @classmethod
-    def getDestinationHost(self, hostsToavoid, hosts):
-        destinationHost = None
-        for host in hosts:
-            if host.id not in hostsToavoid:
-                destinationHost = host
-                break
-        return destinationHost
-
-    @classmethod
-    def get_destination_pools_hosts(self, vm, hosts):
-        vol_list = list_volumes(
-            self.apiclient,
-            virtualmachineid=vm.id,
-            listall=True)
-            # Get destination host
-        destinationHost = self.getDestinationHost(vm.hostid, hosts)
-        return destinationHost, vol_list
-
-    @classmethod
-    def migrateVm(self, vm, destinationHost):
-        """
-        This method is to migrate a VM using migrate virtual machine API
-        """
-    
-        vm.migrate(
-            self.apiclient,
-            hostid=destinationHost.id,
-        )
-        vm.getState(
-            self.apiclient,
-            "Running"
-        )
-        # check for the VM's host and volume's storage post migration
-        migrated_vm_response = list_virtual_machines(self.apiclient, id=vm.id)
-        assert isinstance(migrated_vm_response, list), "Check list virtual machines response for valid list"
-
-        assert migrated_vm_response[0].hostid ==  destinationHost.id, "VM did not migrate to a specified host"
-        return migrated_vm_response[0]
-
-    @classmethod
-    def getDestinationPool(self,
-                           poolsToavoid,
-                           migrateto
-                           ):
-        """ Get destination pool which has scope same as migrateto
-        and which is not in avoid set
-        """
-    
-        destinationPool = None
-    
-        # Get Storage Pool Id to migrate to
-        for storagePool in self.pools:
-            if storagePool.scope == migrateto:
-                if storagePool.name not in poolsToavoid:
-                    destinationPool = storagePool
-                    break
-    
-        return destinationPool
-
- 
-    @classmethod
-    def check_storpool_volume_size(cls, volume):
-        name = volume.path.split("/")[3]
-        try:
-            spvolume = cls.spapi.volumeList(volumeName = "~" + name)
-            if spvolume[0].size != volume.size:
-                raise Exception("Storpool volume size is not the same as CloudStack db size")
-        except spapi.ApiError as err:
-           raise Exception(err)
-
-    @classmethod
-    def check_storpool_volume_iops(cls, volume):
-        name = volume.path.split("/")[3]
-        try:
-            spvolume = cls.spapi.volumeList(volumeName = "~" + name)
-            cls.debug(spvolume[0].iops)
-            cls.debug(volume.maxiops)
-            if spvolume[0].iops != volume.maxiops:
-                raise Exception("Storpool volume size is not the same as CloudStack db size")
-        except spapi.ApiError as err:
-           raise Exception(err)
-
-    @classmethod
-    def create_custom_disk(cls, apiclient, services, size = None, miniops = None, maxiops =None, diskofferingid=None, zoneid=None):
-        """Create Volume from Custom disk offering"""
-        cmd = createVolume.createVolumeCmd()
-        cmd.name = services["diskname"]
-
-        if diskofferingid:
-            cmd.diskofferingid = diskofferingid
-
-        if size:
-            cmd.size = size
-
-        if miniops:
-            cmd.miniops = miniops
-
-        if maxiops:
-            cmd.maxiops = maxiops
-
-        cmd.zoneid = zoneid
-
-
-        return Volume(apiclient.createVolume(cmd).__dict__)
-
-    @classmethod
-    def create_vm_custom(cls, apiclient, services, templateid=None, zoneid=None, 
-               serviceofferingid=None, method='GET', hypervisor=None,
-               cpuNumber=None, cpuSpeed=None, memory=None, minIops=None,
-               maxIops=None, hostid=None, rootdisksize=None,
-               ):
-        """Create the instance"""
-
-        cmd = deployVirtualMachine.deployVirtualMachineCmd()
-
-        if serviceofferingid:
-            cmd.serviceofferingid = serviceofferingid
-        elif "serviceoffering" in services:
-            cmd.serviceofferingid = services["serviceoffering"]
-
-        if zoneid:
-            cmd.zoneid = zoneid
-        elif "zoneid" in services:
-            cmd.zoneid = services["zoneid"]
-
-        if hypervisor:
-            cmd.hypervisor = hypervisor
-
-        if hostid:
-            cmd.hostid = hostid
-
-        if "displayname" in services:
-            cmd.displayname = services["displayname"]
-
-        if "name" in services:
-            cmd.name = services["name"]
-
-        if templateid:
-            cmd.templateid = templateid
-        elif "template" in services:
-            cmd.templateid = services["template"]
-
-
-
-        cmd.details = [{}]
-
-        if cpuNumber:
-            cmd.details[0]["cpuNumber"] = cpuNumber
-
-        if cpuSpeed:
-            cmd.details[0]["cpuSpeed"] = cpuSpeed
-
-        if memory:
-            cmd.details[0]["memory"] = memory
-
-        if minIops:
-            cmd.details[0]["minIops"] = minIops
-
-        if maxIops:
-            cmd.details[0]["maxIops"] = maxIops
-
-        if rootdisksize >= 0:
-            cmd.details[0]["rootdisksize"] = rootdisksize
-
-        virtual_machine = apiclient.deployVirtualMachine(cmd, method=method)
-
-        return VirtualMachine(virtual_machine.__dict__, services)
-
-    @classmethod
-    def resize_volume(cls, apiclient, volume, shrinkOk=None, disk_offering =None, size=None, maxiops=None, miniops=None):
-
-        cmd = resizeVolume.resizeVolumeCmd()
-        cmd.id = volume.id
-
-        if disk_offering:
-            cmd.diskofferingid = disk_offering.id
-        if size:
-            cmd.size = size
-        
-        if maxiops:
-            cmd.maxiops = maxiops
-        if miniops:
-            cmd.miniops
-
-        cmd.shrinkok = shrinkOk
-        apiclient.resizeVolume(cmd)
-
-        new_size = Volume.list(
-            apiclient,
-            id=volume.id
-            )
-        volume_size = new_size[0].size
-        return new_size[0]

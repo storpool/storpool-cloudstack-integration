@@ -64,7 +64,15 @@ class TestStoragePool(cloudstackTestCase):
 
     @classmethod
     def setUpClass(cls):
+        super(TestStoragePool, cls).setUpClass()
+        try:
+            cls.setUpCloudStack()
+        except Exception:
+            cls.cleanUpCloudStack()
+            raise
 
+    @classmethod
+    def setUpCloudStack(cls):
         testClient = super(TestStoragePool, cls).getClsTestClient()
 
 
@@ -306,6 +314,10 @@ class TestStoragePool(cloudstackTestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls.cleanUpCloudStack()
+
+    @classmethod
+    def cleanUpCloudStack(cls):
         try:
             # Cleanup resources used
             cleanup_resources(cls.apiclient, cls._cleanup)

@@ -39,7 +39,9 @@ from marvin.lib.base import (Account,
                              Template,
                              VirtualMachine,
                              VmSnapshot,
-                             Volume)
+                             Volume,
+                             SecurityGroup,
+                             )
 from marvin.lib.common import (get_zone,
                                get_domain,
                                get_template,
@@ -57,12 +59,21 @@ from nose.plugins.attrib import attr
 import uuid
 
 import storpool
-
+from sp_util import (TestData, StorPoolHelper)
 
 class TestStoragePool(cloudstackTestCase):
 
     @classmethod
     def setUpClass(cls):
+        super(TestStoragePool, cls).setUpClass()
+        try:
+            cls.setUpCloudStack()
+        except Exception:
+            cls.cleanUpCloudStack()
+            raise
+
+    @classmethod
+    def setUpCloudStack(cls):
         testClient = super(TestStoragePool, cls).getClsTestClient()
         cls.apiclient = testClient.getApiClient()
         cls.unsupportedHypervisor = False
@@ -75,7 +86,7 @@ class TestStoragePool(cloudstackTestCase):
         # Get Zone, Domain and templates
         cls.domain = get_domain(cls.apiclient)
         cls.zone = None
-
+        cls._cleanup = []
 
         zones = list_zones(cls.apiclient)
 
@@ -83,38 +94,36 @@ class TestStoragePool(cloudstackTestCase):
             if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
                 cls.zone = z
 
-        storpool_primary_storage = {
-            "name" : "ssd",
-            "zoneid": cls.zone.id,
-            "url": "ssd",
-            "scope": "zone",
-            "capacitybytes": 4500000,
-            "capacityiops": 155466464221111121,
-            "hypervisor": "kvm",
-            "provider": "StorPool",
-            "tags": "ssd"
-            }
+        td = TestData()
+        cls.testdata = td.testdata
+        cls.helper = StorPoolHelper()
 
-        storpool_service_offerings = {
-            "name": "ssd",
-                "displaytext": "SP_CO_2 (Min IOPS = 10,000; Max IOPS = 15,000)",
-                "cpunumber": 1,
-                "cpuspeed": 500,
-                "memory": 512,
-                "storagetype": "shared",
-                "customizediops": False,
-                "hypervisorsnapshotreserve": 200,
-                "tags": "ssd"
-            }
+        cls.account = cls.helper.create_account(
+                            cls.apiclient,
+                            cls.services["account"],
+                            accounttype = 1,
+                            domainid=cls.domain.id,
+                            roleid = 1
+                            )
+        cls._cleanup.append(cls.account)
+
+        securitygroup = SecurityGroup.list(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid)[0]
+        cls.helper.set_securityGroups(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid, id = securitygroup.id)
+
+        storpool_primary_storage = cls.testdata[TestData.primaryStorage]
+
+        storpool_service_offerings = cls.testdata[TestData.serviceOffering]
+
+        cls.template_name = storpool_primary_storage.get("name")
 
         storage_pool = list_storage_pools(
             cls.apiclient,
-            name='ssd'
+            name=cls.template_name
             )
 
         service_offerings = list_service_offering(
             cls.apiclient,
-            name='ssd'
+            name=cls.template_name
             )
 
         disk_offerings = list_disk_offering(
@@ -160,33 +169,35 @@ class TestStoragePool(cloudstackTestCase):
             assert False, "get_template() failed to return template\
                     with description %s" % cls.services["ostype"]
 
-        cls.services["domainid"] = cls.domain.id
-        cls.services["small"]["zoneid"] = cls.zone.id
-        cls.services["templates"]["ostypeid"] = template.ostypeid
-        cls.services["zoneid"] = cls.zone.id
-
 
         cls.service_offering = service_offerings
         cls.debug(pprint.pformat(cls.service_offering))
 
-        cls.local_cluster = cls.get_local_cluster(zoneid = cls.zone.id)
-        cls.host = cls.list_hosts_by_cluster_id(cls.local_cluster.id)
+        cls.local_cluster = cls.helper.get_local_cluster(cls.apiclient, zoneid = cls.zone.id)
+        cls.host = cls.helper.list_hosts_by_cluster_id(cls.apiclient, cls.local_cluster.id)
 
-        cls.remote_cluster = cls.get_remote_cluster(zoneid = cls.zone.id)
-        cls.host_remote = cls.list_hosts_by_cluster_id(cls.remote_cluster.id)
+        cls.remote_cluster = cls.helper.get_remote_cluster(cls.apiclient, zoneid = cls.zone.id)
+        cls.host_remote = cls.helper.list_hosts_by_cluster_id(cls.apiclient, cls.remote_cluster.id)
+
+
+        cls.services["domainid"] = cls.domain.id
+        cls.services["small"]["zoneid"] = cls.zone.id
+        cls.services["templates"]["ostypeid"] = template.ostypeid
+        cls.services["zoneid"] = cls.zone.id
+        cls.services["diskofferingid"] = cls.disk_offerings.id
 
         cls.volume_1 = Volume.create(
             cls.apiclient,
-            {"diskname":"StorPoolDisk-1" },
-            zoneid=cls.zone.id,
-            diskofferingid=disk_offerings[0].id,
+            cls.services,
+            account=cls.account.name,
+            domainid=cls.account.domainid
         )
 
         cls.volume = Volume.create(
             cls.apiclient,
-            {"diskname":"StorPoolDisk-3" },
-            zoneid=cls.zone.id,
-            diskofferingid=disk_offerings[0].id,
+            cls.services,
+            account=cls.account.name,
+            domainid=cls.account.domainid
         )
  
         cls.virtual_machine = VirtualMachine.create(
@@ -194,6 +205,8 @@ class TestStoragePool(cloudstackTestCase):
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=cls.service_offering.id,
             hypervisor=cls.hypervisor,
             hostid = cls.host[0].id,
@@ -204,6 +217,8 @@ class TestStoragePool(cloudstackTestCase):
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=cls.service_offering.id,
             hypervisor=cls.hypervisor,
             hostid = cls.host[0].id,
@@ -214,6 +229,8 @@ class TestStoragePool(cloudstackTestCase):
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=cls.service_offering.id,
             hypervisor=cls.hypervisor,
             hostid = cls.host[0].id,
@@ -223,17 +240,15 @@ class TestStoragePool(cloudstackTestCase):
         cls.random_data_0 = random_gen(size=100)
         cls.test_dir = "/tmp"
         cls.random_data = "random.data"
-        cls._cleanup = []
-        cls._cleanup.append(cls.virtual_machine)
-        cls._cleanup.append(cls.virtual_machine2)
-        cls._cleanup.append(cls.virtual_machine3)
-        cls._cleanup.append(cls.volume_1)
-        cls._cleanup.append(cls.volume)
 
         return
 
     @classmethod
     def tearDownClass(cls):
+        cls.cleanUpCloudStack()
+
+    @classmethod
+    def cleanUpCloudStack(cls):
         try:
             # Cleanup resources used
             cleanup_resources(cls.apiclient, cls._cleanup)
@@ -261,9 +276,9 @@ class TestStoragePool(cloudstackTestCase):
         self.virtual_machine2.stop(self.apiclient, forced = True)
         self.virtual_machine3.stop(self.apiclient, forced = True)
         
-        self.start(self.virtual_machine.id, self.host_remote[0].id)
-        self.start(self.virtual_machine2.id, self.host_remote[0].id)
-        self.start(self.virtual_machine3.id, self.host_remote[0].id)
+        self.helper.start(self.apiclient, self.virtual_machine.id, self.host_remote[0].id)
+        self.helper.start(self.apiclient, self.virtual_machine2.id, self.host_remote[0].id)
+        self.helper.start(self.apiclient, self.virtual_machine3.id, self.host_remote[0].id)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_02_attach_detach_volume_to_vm_on_remote(self):
@@ -292,7 +307,7 @@ class TestStoragePool(cloudstackTestCase):
             self.volume_1
             )
 
-        self.start(self.virtual_machine.id, self.host_remote[0].id)
+        self.helper.start(self.apiclient, self.virtual_machine.id, self.host_remote[0].id)
         list_vm_volumes = Volume.list(
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
@@ -309,7 +324,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = list_volumes(
             self.apiclient,
             virtualmachineid = self.virtual_machine2.id,
-            type = "ROOT"
+            type = "ROOT",
+            listall = True
             )
         volume = volume[0]
         self.assertEqual(volume.type, 'ROOT', "Volume is not of ROOT type")
@@ -326,7 +342,8 @@ class TestStoragePool(cloudstackTestCase):
 
         new_size = Volume.list(
             self.apiclient,
-            id=volume.id
+            id=volume.id,
+            listall = True
             )
 
         self.assertTrue(
@@ -346,7 +363,8 @@ class TestStoragePool(cloudstackTestCase):
         self.apiclient.resizeVolume(cmd)
         new_size = Volume.list(
             self.apiclient,
-            id=volume.id
+            id=volume.id,
+            listall = True
             )
 
         self.assertTrue(
@@ -376,7 +394,8 @@ class TestStoragePool(cloudstackTestCase):
 
         new_size = Volume.list(
             self.apiclient,
-            id=volume.id
+            id=volume.id,
+            listall = True
             )
 
         self.assertTrue(
@@ -396,7 +415,8 @@ class TestStoragePool(cloudstackTestCase):
         self.apiclient.resizeVolume(cmd)
         new_size = Volume.list(
             self.apiclient,
-            id=volume.id
+            id=volume.id,
+            listall = True
             )
 
         self.assertTrue(
@@ -416,7 +436,8 @@ class TestStoragePool(cloudstackTestCase):
         self.apiclient.resizeVolume(cmd)
         new_size = Volume.list(
             self.apiclient,
-            id=volume.id
+            id=volume.id,
+            listall = True
             )
         self.assertTrue(
             (new_size[0].size == int((self.disk_offerings.disksize)*(1024**3))),
@@ -429,14 +450,16 @@ class TestStoragePool(cloudstackTestCase):
         volume = list_volumes(
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
-            type = "ROOT"
+            type = "ROOT",
+            listall = True
             )
 
         snapshot = Snapshot.create(
                         self.apiclient,
-                        volume[0].id
+                        volume[0].id,
+                        account=self.account.name,
+                        domainid=self.account.domainid
                         )
-        self._cleanup.append(snapshot)
         self.assertIsNotNone(snapshot, "Could not create snapshot from ROOT")
  
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -446,7 +469,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = Volume.list(
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
-            type = "ROOT"
+            type = "ROOT",
+            listall = True
             )
         volume = volume[0]
 
@@ -459,12 +483,14 @@ class TestStoragePool(cloudstackTestCase):
             value = "false")
         snapshot = Snapshot.create(
            self.apiclient,
-            volume_id = volume.id
+            volume_id = volume.id,
+            account=self.account.name,
+            domainid=self.account.domainid
             )
         self.assertIsNotNone(snapshot, "Could not create snapshot")
         self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
         
-        template = self.create_template_from_snapshot(
+        template = self.helper.create_template_from_snapshot(
             self.apiclient,
             self.services,
             snapshotid = snapshot.id
@@ -474,6 +500,8 @@ class TestStoragePool(cloudstackTestCase):
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             serviceofferingid=self.service_offering.id,
             hypervisor=self.hypervisor,
             rootdisksize=10
@@ -483,9 +511,7 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsInstance(template, Template, "Template is instance of template")
         ssh_client = virtual_machine.get_ssh_client(reconnect=True)
 
-        self._cleanup.append(snapshot)
         self._cleanup.append(template)
-        self._cleanup.append(virtual_machine)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_07_snapshot_to_template_bypass_secondary(self):
@@ -495,7 +521,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = list_volumes(
                         self.apiclient,
                         virtualmachineid = self.virtual_machine.id,
-                        type = "ROOT"
+                        type = "ROOT",
+                        listall = True
                         )
 
         backup_config = list_configurations(
@@ -508,13 +535,15 @@ class TestStoragePool(cloudstackTestCase):
 
         snapshot = Snapshot.create(
            self.apiclient,
-            volume_id = volume[0].id
+            volume_id = volume[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid
             )
 
         self.assertIsNotNone(snapshot, "Could not create snapshot")
         self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
         
-        template = self.create_template_from_snapshot(
+        template = self.helper.create_template_from_snapshot(
             self.apiclient,
             self.services,
             snapshotid = snapshot.id
@@ -524,6 +553,8 @@ class TestStoragePool(cloudstackTestCase):
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             serviceofferingid=self.service_offering.id,
             hypervisor=self.hypervisor,
             rootdisksize=10
@@ -534,9 +565,7 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
 
-        self._cleanup.append(snapshot)
         self._cleanup.append(template)
-        self._cleanup.append(virtual_machine)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_08_volume_to_template(self):
@@ -545,12 +574,13 @@ class TestStoragePool(cloudstackTestCase):
         volume = Volume.list(
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
-            type = "ROOT"
+            type = "ROOT",
+            listall = True
             )
 
         self.virtual_machine.stop(self.apiclient, forced = True)
 
-        template = self.create_template_from_snapshot(
+        template = self.helper.create_template_from_snapshot(
             self.apiclient,
             self.services,
             volumeid = volume[0].id
@@ -560,6 +590,8 @@ class TestStoragePool(cloudstackTestCase):
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=self.zone.id,
             templateid=template.id,
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             serviceofferingid=self.service_offering.id,
             hypervisor=self.hypervisor,
             rootdisksize=10
@@ -571,7 +603,6 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsInstance(template, Template, "Template is instance of template")
 
         self._cleanup.append(template)
-        self._cleanup.append(virtual_machine)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_09_create_vm_snapshots(self):
@@ -686,7 +717,7 @@ class TestStoragePool(cloudstackTestCase):
             list_snapshot_response[0].id
             )
 
-        self.start(self.virtual_machine3.id, self.host_remote[0].id)
+        self.helper.start(self.apiclient, self.virtual_machine3.id, self.host_remote[0].id)
 
         try:
             ssh_client = self.virtual_machine3.get_ssh_client(reconnect=True)
@@ -744,97 +775,5 @@ class TestStoragePool(cloudstackTestCase):
         self.debug('list_snapshot_response -------------------- %s' % list_snapshot_response)
 
         self.assertIsNone(list_snapshot_response, "snapshot is already deleted")
-
-    @classmethod
-    def get_local_cluster(cls, zoneid):
-       storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
-       clusterid = storpool_clusterid.split("=")
-       cls.debug(storpool_clusterid)
-       clusters = list_clusters(cls.apiclient, zoneid = zoneid)
-       for c in clusters:
-           configuration = list_configurations(
-               cls.apiclient,
-               clusterid = c.id
-               )
-           for conf in configuration:
-               if conf.name == 'sp.cluster.id'  and (conf.value in clusterid[1]):
-                   return c
-
-    @classmethod
-    def get_remote_cluster(cls, zoneid):
-       storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
-       clusterid = storpool_clusterid.split("=")
-       cls.debug(storpool_clusterid)
-       clusters = list_clusters(cls.apiclient, zoneid = zoneid)
-       for c in clusters:
-           configuration = list_configurations(
-               cls.apiclient,
-               clusterid = c.id
-               )
-           for conf in configuration:
-               if conf.name == 'sp.cluster.id'  and (conf.value not in clusterid[1]):
-                   return c
-
-    @classmethod
-    def list_hosts_by_cluster_id(cls, clusterid):
-        """List all Hosts matching criteria"""
-        cmd = listHosts.listHostsCmd()
-        cmd.clusterid = clusterid  
-        return(cls.apiclient.listHosts(cmd))
-    
-    def start(cls, vmid, hostid):
-        """Start the instance"""
-        cmd = startVirtualMachine.startVirtualMachineCmd()
-        cmd.id = vmid
-        cmd.hostid = hostid
-        return (cls.apiclient.startVirtualMachine(cmd))
-
-    @classmethod
-    def create_volume(self, apiclient, zoneid=None, snapshotid=None):
-        """Create Volume"""
-        cmd = createVolume.createVolumeCmd()
-        cmd.name = "Test"
-
-        if zoneid:
-            cmd.zoneid = zoneid
-
-        if snapshotid:
-            cmd.snapshotid = snapshotid
-        return Volume(apiclient.createVolume(cmd).__dict__)
-    
-    @classmethod
-    def create_template_from_snapshot(self, apiclient, services, snapshotid=None, volumeid=None):
-        """Create template from Volume"""
-        # Create template from Virtual machine and Volume ID
-        cmd = createTemplate.createTemplateCmd()
-        cmd.displaytext = "StorPool_Template"
-        cmd.name = "-".join(["StorPool-", random_gen()])
-        if "ostypeid" in services:
-            cmd.ostypeid = services["ostypeid"]
-        elif "ostype" in services:
-            # Find OSTypeId from Os type
-            sub_cmd = listOsTypes.listOsTypesCmd()
-            sub_cmd.description = services["ostype"]
-            ostypes = apiclient.listOsTypes(sub_cmd)
-
-            if not isinstance(ostypes, list):
-                raise Exception(
-                    "Unable to find Ostype id with desc: %s" %
-                    services["ostype"])
-            cmd.ostypeid = ostypes[0].id
-        else:
-            raise Exception(
-                "Unable to find Ostype is required for creating template")
-
-        cmd.isfeatured = True
-        cmd.ispublic = True
-        cmd.isextractable =  False
-
-        if snapshotid:
-            cmd.snapshotid = snapshotid
-
-        if volumeid:
-            cmd.volumeid = volumeid
-        return Template(apiclient.createTemplate(cmd).__dict__)
 
            
