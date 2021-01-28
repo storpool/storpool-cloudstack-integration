@@ -27,7 +27,8 @@ from marvin.lib.base import (Account,
                              VirtualMachine,
                              VmSnapshot,
                              User,
-                             Volume
+                             Volume,
+                             SecurityGroup,
                              )
 from marvin.lib.common import (get_zone,
                                get_domain,
@@ -45,110 +46,20 @@ from marvin.lib.common import (get_zone,
 from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_snapshot_on_nfs, isAlmostEqual, get_hypervisor_type
 from nose.plugins.attrib import attr
 import uuid
-
-
-class TestData():
-    account = "account"
-    capacityBytes = "capacitybytes"
-    capacityIops = "capacityiops"
-    clusterId = "clusterId"
-    diskName = "diskname"
-    diskOffering = "diskoffering"
-    domainId = "domainId"
-    hypervisor = "hypervisor"
-    login = "login"
-    mvip = "mvip"
-    password = "password"
-    port = "port"
-    primaryStorage = "primarystorage"
-    provider = "provider"
-    serviceOffering = "serviceOffering"
-    serviceOfferingOnly = "serviceOfferingOnly"
-    scope = "scope"
-    StorPool = "storpool"
-    storageTag = ["ssd", "cloud-test-dev-1", "shared-tags"]
-    tags = "tags"
-    virtualMachine = "virtualmachine"
-    virtualMachine2 = "virtualmachine2"
-    volume_1 = "volume_1"
-    volume_2 = "volume_2"
-    zoneId = "zoneId"
-
-
-    def __init__(self):
-        self.testdata = {
-            TestData.primaryStorage: {
-                "name": "ssd",
-                TestData.scope: "ZONE",
-                "url": "ssd",
-                TestData.provider: "StorPool",
-                "path": "/dev/storpool",
-                TestData.capacityBytes: 2251799813685248,
-                TestData.hypervisor: "KVM"
-            },
-            TestData.virtualMachine: {
-                "name": "TestVM",
-                "displayname": "TestVM",
-                "privateport": 22,
-                "publicport": 22,
-                "protocol": "tcp"
-            },
-            TestData.virtualMachine2: {
-                "name": "TestVM2",
-                "displayname": "TestVM2",
-                "privateport": 22,
-                "publicport": 22,
-                "protocol": "tcp"
-            },
-            TestData.serviceOffering:{
-                "name": "ssd",
-                "displaytext": "SP_CO_2 (Min IOPS = 10,000; Max IOPS = 15,000)",
-                "cpunumber": 1,
-                "cpuspeed": 500,
-                "memory": 512,
-                "storagetype": "shared",
-                "customizediops": False,
-                "hypervisorsnapshotreserve": 200,
-                "tags": "ssd"
-            },
-            TestData.serviceOfferingOnly:{
-                "name": "cloud-test-dev-1",
-                "displaytext": "SP_CO_2 (Min IOPS = 10,000; Max IOPS = 15,000)",
-                "cpunumber": 1,
-                "cpuspeed": 500,
-                "memory": 512,
-                "storagetype": "shared",
-                "customizediops": False,
-                "hypervisorsnapshotreserve": 200,
-                "tags": "cloud-test-dev-1"
-            },
-            TestData.diskOffering: {
-                "name": "SP_DO_1",
-                "displaytext": "SP_DO_1 (5GB Min IOPS = 300; Max IOPS = 500)",
-                "disksize": 5,
-                "customizediops": False,
-                "miniops": 300,
-                "maxiops": 500,
-                "hypervisorsnapshotreserve": 200,
-                TestData.tags: TestData.storageTag,
-                "storagetype": "shared"
-            },
-            TestData.volume_1: {
-                TestData.diskName: "test-volume-1",
-            },
-            TestData.volume_2: {
-                TestData.diskName: "test-volume-2",
-            },
-            TestData.zoneId: 1,
-            TestData.clusterId: 1,
-            TestData.domainId: 1,
-        }
-
+from sp_util import (TestData, StorPoolHelper)
 
 class TestVmSnapshot(cloudstackTestCase):
-
     @classmethod
     def setUpClass(cls):
+        super(TestVmSnapshot, cls).setUpClass()
+        try:
+            cls.setUpCloudStack()
+        except Exception:
+            cls.cleanUpCloudStack()
+            raise
+
+    @classmethod
+    def setUpCloudStack(cls):
         testClient = super(TestVmSnapshot, cls).getClsTestClient()
         cls.apiclient = testClient.getApiClient()
         cls._cleanup = []
@@ -157,13 +68,13 @@ class TestVmSnapshot(cloudstackTestCase):
         # Setup test data
         td = TestData()
         cls.testdata = td.testdata
+        cls.helper = StorPoolHelper()
 
 
         cls.services = testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates
         cls.domain = get_domain(cls.apiclient)
         cls.zone = None
-
 
         zones = list_zones(cls.apiclient)
 
@@ -182,18 +93,30 @@ class TestVmSnapshot(cloudstackTestCase):
         )
 
         import pprint
-	cls.debug(pprint.pformat(template))
-	cls.debug(pprint.pformat(cls.hypervisor))
+    	cls.debug(pprint.pformat(template))
+    	cls.debug(pprint.pformat(cls.hypervisor))
 
         if template == FAILED:
             assert False, "get_template() failed to return template\
                     with description %s" % cls.services["ostype"]
 
         cls.template = template
+
+        cls.account = cls.helper.create_account(
+                            cls.apiclient,
+                            cls.services["account"],
+                            accounttype = 1,
+                            domainid=cls.domain.id,
+                            roleid = 1
+                            )
+        cls._cleanup.append(cls.account)
+
+        securitygroup = SecurityGroup.list(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid)[0]
+        cls.helper.set_securityGroups(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid, id = securitygroup.id)
+
         primarystorage = cls.testdata[TestData.primaryStorage]
 
         serviceOffering = cls.testdata[TestData.serviceOffering]
-        serviceOfferingOnly = cls.testdata[TestData.serviceOfferingOnly]
         storage_pool = list_storage_pools(
             cls.apiclient,
             name = primarystorage.get("name")
@@ -217,16 +140,11 @@ class TestVmSnapshot(cloudstackTestCase):
         else:
             cls.service_offering_only = ServiceOffering.create(
                 cls.apiclient,
-                serviceOfferingOnly)
+                serviceOffering)
         assert cls.service_offering_only is not None
 
         cls.disk_offering = disk_offering[0]
 
-        account = list_accounts(
-            cls.apiclient,
-            name="admin"
-            )
-        cls.account = account[0]
         # Create 1 data volume_1
         cls.volume = Volume.create(
             cls.apiclient,
@@ -242,16 +160,13 @@ class TestVmSnapshot(cloudstackTestCase):
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=cls.template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=cls.service_offering_only.id,
             hypervisor=cls.hypervisor,
             rootdisksize=10
         )
 
-        # Resources that are to be destroyed
-        cls._cleanup = [
-            cls.virtual_machine,
-            cls.volume
-        ]
         cls.random_data_0 = random_gen(size=100)
         cls.test_dir = "/tmp"
         cls.random_data = "random.data"
@@ -259,6 +174,10 @@ class TestVmSnapshot(cloudstackTestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls.cleanUpCloudStack()
+
+    @classmethod
+    def cleanUpCloudStack(cls):
         try:
             # Cleanup resources used
             cleanup_resources(cls.apiclient, cls._cleanup)
@@ -290,7 +209,7 @@ class TestVmSnapshot(cloudstackTestCase):
         self.assertEqual(volume_attached.id, self.volume.id, "Is not the same volume ")
         try:
             # Login to VM and write data to file system
-            ssh_client = self.virtual_machine.get_ssh_client()
+            ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
 
             cmds = [
                 "echo %s > %s/%s" %
@@ -341,7 +260,7 @@ class TestVmSnapshot(cloudstackTestCase):
         """
 
         try:
-            ssh_client = self.virtual_machine.get_ssh_client()
+            ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
 
             cmds = [
                 "rm -rf %s/%s" % (self.test_dir, self.random_data),

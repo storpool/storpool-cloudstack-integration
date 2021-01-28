@@ -44,7 +44,9 @@ from marvin.lib.base import (Account,
                              Tag,
                              VirtualMachine,
                              VmSnapshot,
-                             Volume)
+                             Volume,
+                             SecurityGroup,
+                             )
 from marvin.lib.common import (get_zone,
                                get_domain,
                                get_template,
@@ -61,15 +63,27 @@ from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_sna
 from nose.plugins.attrib import attr
 
 from storpool import spapi
+from sp_util import (TestData, StorPoolHelper)
 
 
 class TestStoragePool(cloudstackTestCase):
-
     @classmethod
     def setUpClass(cls):
+        super(TestStoragePool, cls).setUpClass()
+        try:
+            cls.setUpCloudStack()
+        except Exception:
+            cls.cleanUpCloudStack()
+            raise
+
+    @classmethod
+    def setUpCloudStack(cls):
         cls.spapi = spapi.Api.fromConfig(multiCluster=True)
         testClient = super(TestStoragePool, cls).getClsTestClient()
         cls.apiclient = testClient.getApiClient()
+
+        cls._cleanup = []
+
         cls.unsupportedHypervisor = False
         cls.hypervisor = testClient.getHypervisorInfo()
         if cls.hypervisor.lower() in ("hyperv", "lxc"):
@@ -88,51 +102,37 @@ class TestStoragePool(cloudstackTestCase):
             if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
                 cls.zone = z
 
-        storpool_primary_storage = {
-            "name" : "ssd",
-            "zoneid": cls.zone.id,
-            "url": "ssd",
-            "scope": "zone",
-            "capacitybytes": 4500000,
-            "capacityiops": 155466464221111121,
-            "hypervisor": "kvm",
-            "provider": "StorPool",
-            "tags": "ssd"
-            }
+        td = TestData()
+        cls.testdata = td.testdata
+        cls.helper = StorPoolHelper()
 
-        storpool_service_offerings = {
-            "name": "ssd",
-                "displaytext": "SP_CO_2 (Min IOPS = 10,000; Max IOPS = 15,000)",
-                "cpunumber": 1,
-                "cpuspeed": 500,
-                "memory": 512,
-                "storagetype": "shared",
-                "customizediops": False,
-                "hypervisorsnapshotreserve": 200,
-                "tags": "ssd"
-            }
-        nfs_service_offerings = {
-            "name": "nfs",
-                "displaytext": "NFS service offerings",
-                "cpunumber": 1,
-                "cpuspeed": 500,
-                "memory": 512,
-                "storagetype": "shared",
-                "customizediops": False,
-                "hypervisorsnapshotreserve": 200,
-                "tags": "nfs"
-            }
+        cls.debug("######################### zone %s" % cls.zone.id)
+        storpool_primary_storage = cls.testdata[TestData.primaryStorage]
+        cls.debug("######################### storpool_primary_storage %s" % storpool_primary_storage)
+        cls.template_name = storpool_primary_storage.get("name")
+        cls.debug("######################### cls.template_name %s" % cls.template_name)
+
+        storpool_service_offerings = cls.testdata[TestData.serviceOffering]
+        cls.debug("######################### cls.storpool_service_offerings %s" % storpool_service_offerings)
+
+        nfs_service_offerings = cls.testdata[TestData.serviceOfferingsPrimary]
+        cls.debug("######################### nfs_service_offerings %s" % nfs_service_offerings)
+
         storage_pool = list_storage_pools(
             cls.apiclient,
-            name='ssd'
+            name=cls.template_name
             )
+        cls.debug("######################### storage_pool %s" % storage_pool)
+
         nfs_storage_pool = list_storage_pools(
             cls.apiclient,
             name='primary'
             )
+        cls.debug("######################### nfs_storage_pool %s" % nfs_storage_pool)
+
         service_offerings = list_service_offering(
             cls.apiclient,
-            name='ssd'
+            name=cls.template_name
             )
         nfs_service_offering = list_service_offering(
             cls.apiclient,
@@ -168,10 +168,25 @@ class TestStoragePool(cloudstackTestCase):
 
         cls.nfs_storage_pool = nfs_storage_pool[0]
         cls.nfs_storage_pool = StoragePool.cancelMaintenance(cls.apiclient, cls.nfs_storage_pool.id)
+
+        cls.account = cls.helper.create_account(
+                            cls.apiclient,
+                            cls.services["account"],
+                            accounttype = 1,
+                            domainid=cls.domain.id,
+                            roleid = 1
+                            )
+        cls._cleanup.append(cls.account)
+
+        securitygroup = SecurityGroup.list(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid)[0]
+        cls.helper.set_securityGroups(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid, id = securitygroup.id)
+
         cls.vm = VirtualMachine.create(cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=nfs_service_offering.id,
             hypervisor=cls.hypervisor,
             rootdisksize=10
@@ -180,6 +195,8 @@ class TestStoragePool(cloudstackTestCase):
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=nfs_service_offering.id,
             hypervisor= cls.hypervisor,
             rootdisksize=10
@@ -188,6 +205,8 @@ class TestStoragePool(cloudstackTestCase):
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=nfs_service_offering.id,
             hypervisor= cls.hypervisor,
             rootdisksize=10
@@ -218,14 +237,14 @@ class TestStoragePool(cloudstackTestCase):
         cls.random_data_0 = random_gen(size=100)
         cls.test_dir = "/tmp"
         cls.random_data = "random.data"
-        cls._cleanup = []
-        cls._cleanup.append(cls.vm)
-        cls._cleanup.append(cls.vm2)
-        cls._cleanup.append(cls.vm3)
         return
 
     @classmethod
     def tearDownClass(cls):
+        cls.cleanUpCloudStack()
+
+    @classmethod
+    def cleanUpCloudStack(cls):
         try:
             cls.nfs_storage_pool = StoragePool.enableMaintenance(cls.apiclient, cls.nfs_storage_pool.id)
             cls.storage_pool = StoragePool.update(cls.apiclient,
@@ -260,7 +279,8 @@ class TestStoragePool(cloudstackTestCase):
         migrated_vm = self.apiclient.migrateVirtualMachine(cmd)
         volumes = list_volumes(
             self.apiclient,
-            virtualmachineid = migrated_vm.id
+            virtualmachineid = migrated_vm.id,
+            listall=True
             )
         for v in volumes:
             name = v.path.split("/")[3]
@@ -278,7 +298,8 @@ class TestStoragePool(cloudstackTestCase):
         self.vm2.stop(self.apiclient, forced=True)
         volumes = list_volumes(
             self.apiclient,
-            virtualmachineid = self.vm2.id
+            virtualmachineid = self.vm2.id,
+            listall=True
             )
         for v in volumes:
             cmd = migrateVolume.migrateVolumeCmd()
@@ -289,7 +310,8 @@ class TestStoragePool(cloudstackTestCase):
 
         volumes = list_volumes(
             self.apiclient,
-            virtualmachineid = self.vm2.id
+            virtualmachineid = self.vm2.id,
+            listall=True
             )
         for v in volumes:
             name = v.path.split("/")[3]
@@ -339,7 +361,8 @@ class TestStoragePool(cloudstackTestCase):
         self.vm3.stop(self.apiclient, forced=True)
         volumes = list_volumes(
             self.apiclient,
-            virtualmachineid = self.vm3.id
+            virtualmachineid = self.vm3.id,
+            listall=True
             )
         for v in volumes:
             cmd = migrateVolume.migrateVolumeCmd()
@@ -350,7 +373,8 @@ class TestStoragePool(cloudstackTestCase):
 
         volumes = list_volumes(
             self.apiclient,
-            virtualmachineid = self.vm3.id
+            virtualmachineid = self.vm3.id,
+            listall=True
             )
         for v in volumes:
             name = v.path.split("/")[3]
@@ -397,4 +421,3 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
         self._cleanup.append(template)
-        self._cleanup.append(virtual_machine)

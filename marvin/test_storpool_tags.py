@@ -42,7 +42,9 @@ from marvin.lib.base import (Account,
                              Tag,
                              VirtualMachine,
                              VmSnapshot,
-                             Volume)
+                             Volume,
+                             SecurityGroup,
+                             )
 from marvin.lib.common import (get_zone,
                                get_domain,
                                get_template,
@@ -60,12 +62,21 @@ from nose.plugins.attrib import attr
 
 from storpool import spapi
 import uuid
-
+from sp_util import (TestData, StorPoolHelper)
 
 class TestStoragePool(cloudstackTestCase):
 
     @classmethod
     def setUpClass(cls):
+        super(TestStoragePool, cls).setUpClass()
+        try:
+            cls.setUpCloudStack()
+        except Exception:
+            cls.cleanUpCloudStack()
+            raise
+
+    @classmethod
+    def setUpCloudStack(cls):
         cls.spapi = spapi.Api.fromConfig(multiCluster=True)
         testClient = super(TestStoragePool, cls).getClsTestClient()
         cls.apiclient = testClient.getApiClient()
@@ -74,6 +85,8 @@ class TestStoragePool(cloudstackTestCase):
         if cls.hypervisor.lower() in ("hyperv", "lxc"):
             cls.unsupportedHypervisor = True
             return
+
+        cls._cleanup = []
 
         cls.services = testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates
@@ -87,38 +100,36 @@ class TestStoragePool(cloudstackTestCase):
             if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
                 cls.zone = z
 
-        storpool_primary_storage = {
-            "name" : "ssd",
-            "zoneid": cls.zone.id,
-            "url": "ssd",
-            "scope": "zone",
-            "capacitybytes": 4500000,
-            "capacityiops": 155466464221111121,
-            "hypervisor": "kvm",
-            "provider": "StorPool",
-            "tags": "ssd"
-            }
+        td = TestData()
+        cls.testdata = td.testdata
+        cls.helper = StorPoolHelper()
 
-        storpool_service_offerings = {
-            "name": "ssd",
-                "displaytext": "SP_CO_2 (Min IOPS = 10,000; Max IOPS = 15,000)",
-                "cpunumber": 1,
-                "cpuspeed": 500,
-                "memory": 512,
-                "storagetype": "shared",
-                "customizediops": False,
-                "hypervisorsnapshotreserve": 200,
-                "tags": "ssd"
-            }
+        cls.account = cls.helper.create_account(
+                            cls.apiclient,
+                            cls.services["account"],
+                            accounttype = 1,
+                            domainid=cls.domain.id,
+                            roleid = 1
+                            )
+        cls._cleanup.append(cls.account)
+
+        securitygroup = SecurityGroup.list(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid)[0]
+        cls.helper.set_securityGroups(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid, id = securitygroup.id)
+
+        storpool_primary_storage = cls.testdata[TestData.primaryStorage]
+
+        storpool_service_offerings = cls.testdata[TestData.serviceOffering]
+
+        cls.template_name = storpool_primary_storage.get("name")
 
         storage_pool = list_storage_pools(
             cls.apiclient,
-            name='ssd'
+            name=cls.template_name
             )
 
         service_offerings = list_service_offering(
             cls.apiclient,
-            name='ssd'
+            name=cls.template_name
             )
 
         disk_offerings = list_disk_offering(
@@ -155,34 +166,36 @@ class TestStoragePool(cloudstackTestCase):
         cls.services["small"]["zoneid"] = cls.zone.id
         cls.services["templates"]["ostypeid"] = template.ostypeid
         cls.services["zoneid"] = cls.zone.id
-
+        cls.services["diskofferingid"] = cls.disk_offerings.id
 
         cls.service_offering = service_offerings
         cls.debug(pprint.pformat(cls.service_offering))
 
         cls.volume_1 = Volume.create(
             cls.apiclient,
-            {"diskname":"StorPoolDisk-1" },
-            zoneid=cls.zone.id,
-            diskofferingid=cls.disk_offerings.id,
+           cls.services,
+           account=cls.account.name,
+           domainid=cls.account.domainid
         )
         cls.volume_2 = Volume.create(
             cls.apiclient,
-            {"diskname":"StorPoolDisk-2" },
-            zoneid=cls.zone.id,
-            diskofferingid=cls.disk_offerings.id,
+           cls.services,
+           account=cls.account.name,
+           domainid=cls.account.domainid
         )
         cls.volume = Volume.create(
             cls.apiclient,
-            {"diskname":"StorPoolDisk-3" },
-            zoneid=cls.zone.id,
-            diskofferingid=cls.disk_offerings.id,
+           cls.services,
+           account=cls.account.name,
+           domainid=cls.account.domainid
         )
         cls.virtual_machine = VirtualMachine.create(
             cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=cls.service_offering.id,
             hypervisor=cls.hypervisor,
             rootdisksize=10
@@ -192,6 +205,8 @@ class TestStoragePool(cloudstackTestCase):
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             serviceofferingid=cls.service_offering.id,
             hypervisor=cls.hypervisor,
             rootdisksize=10
@@ -200,16 +215,14 @@ class TestStoragePool(cloudstackTestCase):
         cls.random_data_0 = random_gen(size=100)
         cls.test_dir = "/tmp"
         cls.random_data = "random.data"
-        cls._cleanup = []
-        cls._cleanup.append(cls.virtual_machine)
-        cls._cleanup.append(cls.virtual_machine2)
-        cls._cleanup.append(cls.volume_1)
-        cls._cleanup.append(cls.volume_2)
-        cls._cleanup.append(cls.volume)
         return
 
     @classmethod
     def tearDownClass(cls):
+        cls.cleanUpCloudStack()
+
+    @classmethod
+    def cleanUpCloudStack(cls):
         try:
             # Cleanup resources used
             cleanup_resources(cls.apiclient, cls._cleanup)
@@ -243,11 +256,11 @@ class TestStoragePool(cloudstackTestCase):
             resourceType='UserVm',
             tags={'vc_policy': 'testing_vc_policy'}
         )
-        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id, listall=True)
         vm_tags = vm[0].tags
         volumes = list_volumes(
             self.apiclient,
-            virtualmachineid = self.virtual_machine.id,
+            virtualmachineid = self.virtual_machine.id, listall=True
             )
         self.debug('######################### test_01_set_vcpolicy_tag_to_vm_with_attached_disks tags ######################### ')
 
@@ -261,11 +274,11 @@ class TestStoragePool(cloudstackTestCase):
                 self.apiclient,
                 self.volume_2
                 )
-        volume = list_volumes(self.apiclient, id = volume_attached.id)
+        volume = list_volumes(self.apiclient, id = volume_attached.id, listall=True)
         name = volume[0].path.split("/")[3]
         sp_volume = self.spapi.volumeList(volumeName="~" + name)
 
-        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id, listall=True)
         vm_tags = vm[0].tags
         self.debug('######################### test_02_set_vcpolicy_tag_to_attached_disk tags ######################### ')
         for vm_tag in vm_tags:
@@ -290,8 +303,8 @@ class TestStoragePool(cloudstackTestCase):
         volumes = list_volumes(
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
-            )
-        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
+            listall=True)
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id, listall=True)
         vm_tags =  vm[0].tags
         self.debug('######################### test_03_create_vm_snapshot_vc_policy_tag tags ######################### ')
 
@@ -422,9 +435,9 @@ class TestStoragePool(cloudstackTestCase):
 
         volumes = list_volumes(
             self.apiclient,
-            virtualmachineid = self.virtual_machine.id,
+            virtualmachineid = self.virtual_machine.id, listall=True
             )
-        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id, listall=True)
         vm_tags =  vm[0].tags
         self.debug('######################### test_04_revert_vm_snapshots_vc_policy_tag tags #########################')
 
@@ -480,11 +493,11 @@ class TestStoragePool(cloudstackTestCase):
                 self.apiclient,
                 self.volume_2
                 )
-        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id, listall=True)
         vm_tags = vm[0].tags
         volumes = list_volumes(
             self.apiclient,
-            virtualmachineid = self.virtual_machine.id,
+            virtualmachineid = self.virtual_machine.id, listall=True
             )
         self.debug('#########################  test_06_remove_vcpolicy_tag_when_disk_detached tags ######################### ')
 
@@ -500,7 +513,7 @@ class TestStoragePool(cloudstackTestCase):
 
         volumes = list_volumes(
             self.apiclient,
-            virtualmachineid = self.virtual_machine.id,
+            virtualmachineid = self.virtual_machine.id, listall=True
             )
         self.debug('######################### test_07_delete_vcpolicy_tag  #########################')
         for v in volumes:
@@ -519,12 +532,12 @@ class TestStoragePool(cloudstackTestCase):
             resourceType='UserVm',
             tags={'vc_policy': 'testing_vc_policy'}
         )
-        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine2.id)
+        vm = list_virtual_machines(self.apiclient,id = self.virtual_machine2.id, listall=True)
         vm_tags = vm[0].tags
 
         volume = Volume.list(
             self.apiclient,
-            virtualmachineid = self.virtual_machine2.id,
+            virtualmachineid = self.virtual_machine2.id, listall=True,
             type = "ROOT"
             )
         self.debug('######################### test_08_vcpolicy_tag_to_reverted_disk tags before revert #########################')
@@ -532,7 +545,9 @@ class TestStoragePool(cloudstackTestCase):
 
         snapshot = Snapshot.create(
             self.apiclient, 
-            volume[0].id
+            volume[0].id,
+            account=self.account.name,
+           domainid=self.account.domainid
             )
 
         virtual_machine = self.virtual_machine2.stop(
@@ -548,9 +563,8 @@ class TestStoragePool(cloudstackTestCase):
         vm_tags = vm[0].tags
         self.debug('######################### test_08_vcpolicy_tag_to_reverted_disk tags after revert #########################')
 
-        vol = list_volumes(self.apiclient, id = snapshot.volumeid)
+        vol = list_volumes(self.apiclient, id = snapshot.volumeid, listall=True)
         self.vc_policy_tags(vol, vm_tags, vm)
-        self._cleanup.append(snapshot)
 
 
     def vc_policy_tags(self, volumes, vm_tags, vm):

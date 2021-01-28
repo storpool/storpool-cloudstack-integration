@@ -58,6 +58,7 @@ from storpool import spapi
 from storpool import sptypes
 import json
 import pprint
+from sp_util import (TestData, StorPoolHelper)
 
 class TestNewPrimaryStorage(cloudstackTestCase): 
     @classmethod
@@ -72,8 +73,6 @@ class TestNewPrimaryStorage(cloudstackTestCase):
     @classmethod
     def setUpCloudStack(cls):
         cls.testClient = super(TestNewPrimaryStorage, cls).getClsTestClient()
-        cls.template_name = "test-primary"
-        cls.storage_pool_id = "spStoragePoolId"
 
         cls.cleanup = []
 
@@ -84,16 +83,9 @@ class TestNewPrimaryStorage(cloudstackTestCase):
             cls.unsupportedHypervisor = True
             return
 
-        spapiRemote = spapi.Api.fromConfig()
-        cls.debug("================ %s" % spapiRemote)
-        cls.spapi = spapi.Api.fromConfig(multiCluster= True)
-        cls.debug("================ %s" % cls.spapi)
-
-        remote_cluster = cls.get_remote_storpool_cluster()
-        cls.debug("================ %s" % remote_cluster)
-        newTemplate = sptypes.VolumeTemplateCreateDesc(name = cls.template_name,placeAll = "ssd", placeTail = "ssd", placeHead = "ssd", replication=1)
-        template_on_remote = spapiRemote.volumeTemplateCreate(newTemplate, clusterName=remote_cluster)
-        template_on_local = spapiRemote.volumeTemplateCreate(newTemplate)
+        td = TestData()
+        cls.testdata = td.testdata
+        cls.helper = StorPoolHelper()
 
         cls.services = cls.testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates
@@ -106,6 +98,14 @@ class TestNewPrimaryStorage(cloudstackTestCase):
         for z in zones:
             if z.internaldns1 == cls.getClsConfig().mgtSvr[0].mgtSvrIp:
                 cls.zone = z
+
+        cls.debug("################## zone %s" % cls.zone)
+        cls.template_name = cls.testdata[TestData.primaryStorage3].get("name")
+        cls.debug("################## template_name %s" % cls.template_name)
+
+        cls.storage_pool_id = "spStoragePoolId"
+        cls.sp_primary_storage, cls.spapiRemote, cls.spapi = cls.helper.create_sp_template_and_storage_pool(cls.apiclient, cls.template_name, cls.testdata[TestData.primaryStorage3], cls.zone.id)
+
         disk_offerings = list_disk_offering(
             cls.apiclient,
             name="Small"
@@ -123,28 +123,6 @@ class TestNewPrimaryStorage(cloudstackTestCase):
 
         cls.sp_disk_offering = DiskOffering.create(cls.apiclient, diskOffering)
         cls.cleanup.append(cls.sp_disk_offering)
-
-        sp_primary = {
-            "name" : cls.template_name,
-            "scope" : "ZONE",
-            "url" :  cls.template_name,
-            "provider" : "StorPool",
-            "capacityiops" : 4500000,
-            "capacitybytes" : 2251799813685248,
-            "hypervisor" : "KVM",
-            "zoneId" : cls.zone.id,
-            }
-
-        cls.sp_primary_storage = StoragePool.create(
-                cls.apiclient,
-                sp_primary,
-                scope = sp_primary["scope"],
-                provider = sp_primary["provider"],
-                capacityiops = sp_primary["capacityiops"],
-                capacitybytes = sp_primary["capacitybytes"],
-                hypervisor = "KVM",
-                zoneid = cls.zone.id,
-             )
 
         sp_offerings = {
             "name": cls.template_name,
@@ -185,7 +163,7 @@ class TestNewPrimaryStorage(cloudstackTestCase):
     @classmethod
     def cleanUpCloudStack(cls):
         spapiRemote = spapi.Api.fromConfig()
-        remote_cluster = cls.get_remote_storpool_cluster()
+        remote_cluster = cls.helper.get_remote_storpool_cluster()
         try:
 
             # Cleanup resources used
@@ -307,7 +285,7 @@ class TestNewPrimaryStorage(cloudstackTestCase):
            raise Exception(err)
 
         snapshot = Snapshot.create(self.apiclient, volume_id = volume.id,)
-        id = self.get_snapshot_template_id(snapshot)
+        id = self.helper.get_snapshot_template_id(self.apiclient, snapshot, self.storage_pool_id)
         if id is None:
             raise Exception("There isn't primary storgae id")
         virtual_machine.delete(self.apiclient, expunge= True)
@@ -338,7 +316,8 @@ class TestNewPrimaryStorage(cloudstackTestCase):
         volume = list_volumes(
             self.apiclient,
             virtualmachineid = virtual_machine.id,
-            type = "ROOT"
+            type = "ROOT",
+            listall = True
             )
 
         volume = volume[0]
@@ -360,7 +339,8 @@ class TestNewPrimaryStorage(cloudstackTestCase):
             value = "true")
 
         snapshot = Snapshot.create(self.apiclient, volume_id = volume.id,)
-        id = self.get_snapshot_template_id(snapshot)
+        self.debug("###################### %s" % snapshot)
+        id = self.helper.get_snapshot_template_id(self.apiclient, snapshot, self.storage_pool_id)
         if id is None:
             raise Exception("There isn't primary storgae id")
         virtual_machine.delete(self.apiclient, expunge=True)
@@ -377,42 +357,4 @@ class TestNewPrimaryStorage(cloudstackTestCase):
             self.debug("Storge pool could not be delete due to %s" % err)
 
         Template.delete(template, self.apiclient)
-
-
-    @classmethod
-    def get_remote_storpool_cluster(cls):
-       cls.debug("######################## get_remote_storpool_cluster")
-
-       storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID']).strip()
-       clusterid = storpool_clusterid.split("=")[1].split(".")[1]
-       cls.debug("######################## %s"  % storpool_clusterid)
-       cmd = ["storpool", "-j", "cluster", "list"]
-       proc = subprocess.Popen(cmd,stdout=subprocess.PIPE).stdout.read()
-       csl = json.loads(proc)
-       cls.debug("######################## %s"  % csl)
-
-       clusters =  csl.get("data").get("clusters")
-       cls.debug("######################## %s"  % clusters)
-
-       for c in clusters:
-           c_id = c.get("id")
-           if c_id != clusterid:
-               return c.get("name")
-
-    @classmethod
-    def get_snapshot_template_id(self, snapshot):
-        try:
-            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
-            cmd.snapshotid = snapshot.id
-            snapshot_details = self.apiclient.getVolumeSnapshotDetails(cmd)
-            self.debug("Snapshot details %s" , snapshot_details)
-            self.debug("Snapshot with uuid %s" , snapshot.id)
-            for s in snapshot_details:
-                if s["snapshotDetailsName"] == self.storage_pool_id:
-                    return s["snapshotDetailsValue"]
-        except Exception as err:
-           raise Exception(err)
-
-        return None
-
 
