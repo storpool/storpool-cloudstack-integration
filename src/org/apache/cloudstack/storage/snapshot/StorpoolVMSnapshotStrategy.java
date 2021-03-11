@@ -48,7 +48,6 @@ import com.cloud.agent.api.storage.StorpoolDeleteSnapshotVMCommand;
 import com.cloud.agent.api.storage.StorpoolDeleteVMSnapshotAnswer;
 import com.cloud.agent.api.storage.StorpoolRevertToVMSnapshotAnswer;
 import com.cloud.agent.api.storage.StorpoolRevertToVMSnapshotCommand;
-import com.cloud.agent.api.to.DataStoreTO;
 import com.cloud.event.EventTypes;
 import com.cloud.event.UsageEventUtils;
 import com.cloud.host.HostVO;
@@ -222,18 +221,14 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
 
     @Override
     public StrategyPriority canHandle(VMSnapshot vmSnapshot) {
-        UserVm userVm = userVmDao.findById(vmSnapshot.getVmId());
-        List<VolumeObjectTO> volumeTOs = vmSnapshotHelper.getVolumeTOList(userVm.getId());
+        List<VolumeObjectTO> volumeTOs = vmSnapshotHelper.getVolumeTOList(vmSnapshot.getVmId());
         for (VolumeObjectTO volumeObjectTO : volumeTOs) {
-            DataStoreTO dataStrore = volumeObjectTO.getDataStore();
-            log.info(String.format("Datastore=%s", dataStrore));
             VolumeVO volumeVO = volumeDao.findById(volumeObjectTO.getId());
             StoragePoolVO storagePoolVO = storagePool.findById(volumeVO.getPoolId());
             if (!storagePoolVO.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
                 return StrategyPriority.CANT_HANDLE;
             }
         }
-        log.info("StorpoolVMSnapshotStrategy HIGHEST");
         return StrategyPriority.HIGHEST;
     }
 

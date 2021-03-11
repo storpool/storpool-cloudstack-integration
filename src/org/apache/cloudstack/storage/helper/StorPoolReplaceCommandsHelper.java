@@ -39,6 +39,7 @@ import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
+import org.apache.cloudstack.storage.vmsnapshot.VMSnapshotHelper;
 import org.apache.log4j.Logger;
 
 import com.cloud.api.ApiGsonHelper;
@@ -49,20 +50,17 @@ import com.cloud.exception.InvalidParameterValueException;
 import com.cloud.exception.PermissionDeniedException;
 import com.cloud.exception.ResourceAllocationException;
 import com.cloud.gpu.GPU;
-import com.cloud.hypervisor.Hypervisor.HypervisorType;
 import com.cloud.hypervisor.dao.HypervisorCapabilitiesDao;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.service.dao.ServiceOfferingDetailsDao;
 import com.cloud.storage.Snapshot;
 import com.cloud.storage.SnapshotVO;
-import com.cloud.storage.Storage.ImageFormat;
 import com.cloud.storage.StoragePool;
 import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.SnapshotDao;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.user.Account;
 import com.cloud.user.AccountManager;
-import com.cloud.uservm.UserVm;
 import com.cloud.utils.DateUtil;
 import com.cloud.utils.component.ComponentContext;
 import com.cloud.utils.component.PluggableService;
@@ -75,7 +73,6 @@ import com.cloud.vm.dao.VMInstanceDao;
 import com.cloud.vm.snapshot.VMSnapshot;
 import com.cloud.vm.snapshot.VMSnapshotManager;
 import com.cloud.vm.snapshot.VMSnapshotManagerImpl;
-import com.cloud.vm.snapshot.VMSnapshotVO;
 import com.cloud.vm.snapshot.dao.VMSnapshotDao;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -223,6 +220,8 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
         private DataStoreManager _dataStore;
         @Inject
         private StoragePoolDetailsDao storagePoolDetailsDao;
+        @Inject
+        private VMSnapshotHelper vmSnapshotHelper;
 
         private int _vmSnapshotMax = VMSnapshotManager.VMSNAPSHOTMAX;
 
@@ -342,9 +341,6 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
                      throw new CloudRuntimeException(
                                "There is other active volume snapshot tasks on the instance to which the volume is attached, please try again later.");
                 }
-                if (userVmVo.getHypervisorType() == HypervisorType.KVM && volume.getFormat() != ImageFormat.QCOW2) {
-                     throw new CloudRuntimeException("We only support create vm snapshots from vm with QCOW2 image");
-                }
            }
 
            // check if there are other active VM snapshot tasks
@@ -368,83 +364,54 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
            return null;
       }
 
-        private List<VolumeObjectTO> getVolumeTOList(Long vmId) {
-            List<VolumeObjectTO> volumeTOs = new ArrayList<VolumeObjectTO>();
-            List<VolumeVO> volumeVos = _volumeDao.findByInstance(vmId);
-            VolumeInfo volumeInfo = null;
-            for (VolumeVO volume : volumeVos) {
-                 volumeInfo = volumeDataFactory.getVolume(volume.getId());
+      public boolean areAllVolumesOnStorPool(long vmId) {
+          List<VolumeObjectTO> volumeTOs = vmSnapshotHelper.getVolumeTOList(vmId);
+          for (VolumeObjectTO volumeObjectTO : volumeTOs) {
+              VolumeVO volumeVO = volumeDao.findById(volumeObjectTO.getId());
+              StoragePoolVO storagePoolVO = storagePool.findById(volumeVO.getPoolId());
+              if (!storagePoolVO.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
+                  return false;
+              }
+          }
+          return true;
+      }
 
-                 volumeTOs.add((VolumeObjectTO) volumeInfo.getTO());
-            }
-            return volumeTOs;
-       }
+      public boolean hasRights(String value) {
+          if (value != null) {
+              Account caller = getCurrentAccount();
+              if (caller == null || caller.getRoleId() == null) {
+                  throw new PermissionDeniedException("Restricted API called by an invalid user account");
+              }
+              Role callerRole = findRole(caller.getRoleId());
+              if (callerRole == null || callerRole.getRoleType() != RoleType.Admin) {
+                  throw new PermissionDeniedException(
+                          "Restricted API called by an user account of non-Admin role type");
+              }
+          }
+          return true;
+      }
 
-       public boolean getStorageProviderName(Long vmId) {
-            log.info("_userVMDao" + _userVMDao);
-            UserVm userVm = _userVMDao.findById(vmId);
-            List<VolumeObjectTO> volumeTOs = getVolumeTOList(userVm.getId());
-            for (VolumeObjectTO volumeObjectTO : volumeTOs) {
-                 VolumeVO volumeVO = _volumeDao.findById(volumeObjectTO.getId());
-                 StoragePoolVO storagePoolVO = storagePool.findById(volumeVO.getPoolId());
-                 if (!storagePoolVO.getStorageProviderName().equals("StorPool")) {
-                      return false;
-                 }
-                 log.info("getStorageProviderName " + storagePoolVO);
-            }
-            log.info("Storage provider is StorPool");
-            return true;
-       }
+      private Role findRole(Long id) {
+          if (id == null || id < 1L) {
+              log.trace(String.format("Role ID is invalid [%s]", id));
+              return null;
+          }
+          RoleVO role = roleDao.findById(id);
+          if (role == null) {
+              log.trace(String.format("Role not found [id=%s]", id));
+              return null;
+          }
+          Account account = getCurrentAccount();
+          if (!accountManager.isRootAdmin(account.getId()) && RoleType.Admin == role.getRoleType()) {
+              log.debug(String.format("Role [id=%s, name=%s] is of 'Admin' type and is only visible to 'Root admins'.",
+                      id, role.getName()));
+              return null;
+          }
+          return role;
+      }
 
-       public Long findVMSnapshotById(Long vmSnapShotId) {
-            log.debug("Find vm snapshot by id");
-            VMSnapshotVO vmSnapshotVo = _vmSnapshotDao.findById(vmSnapShotId);
-            return vmSnapshotVo.getVmId();
-       }
-
-       public Long findVMSnapshotByUuid(String vmSnapShotId) {
-            log.debug("Find vm snapshot by uuid");
-            VMSnapshotVO vmSnapshotVo = _vmSnapshotDao.findByUuid(vmSnapShotId);
-            return vmSnapshotVo.getVmId();
-       }
-
-        public boolean hasRights(String value) {
-            if (value != null) {
-                Account caller = getCurrentAccount();
-                if (caller == null || caller.getRoleId() == null) {
-                    throw new PermissionDeniedException("Restricted API called by an invalid user account");
-                }
-                Role callerRole = findRole(caller.getRoleId());
-                if (callerRole == null || callerRole.getRoleType() != RoleType.Admin) {
-                    throw new PermissionDeniedException(
-                            "Restricted API called by an user account of non-Admin role type");
-                }
-            }
-            return true;
-        }
-
-        private Role findRole(Long id) {
-            if (id == null || id < 1L) {
-                log.trace(String.format("Role ID is invalid [%s]", id));
-                return null;
-            }
-            RoleVO role = roleDao.findById(id);
-            if (role == null) {
-                log.trace(String.format("Role not found [id=%s]", id));
-                return null;
-            }
-            Account account = getCurrentAccount();
-            if (!accountManager.isRootAdmin(account.getId()) && RoleType.Admin == role.getRoleType()) {
-                log.debug(
-                        String.format("Role [id=%s, name=%s] is of 'Admin' type and is only visible to 'Root admins'.",
-                                id, role.getName()));
-                return null;
-            }
-            return role;
-        }
-
-        private Account getCurrentAccount() {
-            return CallContext.current().getCallingAccount();
-        }
+      private Account getCurrentAccount() {
+          return CallContext.current().getCallingAccount();
+      }
     }
 }
