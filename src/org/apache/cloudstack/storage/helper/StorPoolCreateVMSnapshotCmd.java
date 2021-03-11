@@ -37,8 +37,14 @@ public class StorPoolCreateVMSnapshotCmd extends BaseAsyncCreateCmd{
     @Override
     public void create() throws ResourceAllocationException {
         replaceCommand.ensureCmdHasRequiredValues(this.createVMSnapshotCmd, this);
-        VMSnapshot vmsnapshot = replaceCommand.allocVMSnapshot(this.createVMSnapshotCmd.getVmId(), this.createVMSnapshotCmd.getDisplayName(),
+        VMSnapshot vmsnapshot = null;
+        if (replaceCommand.areAllVolumesOnStorPool(this.createVMSnapshotCmd.getVmId())) {
+            vmsnapshot = replaceCommand.allocVMSnapshot(this.createVMSnapshotCmd.getVmId(), this.createVMSnapshotCmd.getDisplayName(),
+                    this.createVMSnapshotCmd.getDescription(), this.createVMSnapshotCmd.snapshotMemory());
+        } else {
+            vmsnapshot = _vmSnapshotService.allocVMSnapshot(this.createVMSnapshotCmd.getVmId(), this.createVMSnapshotCmd.getDisplayName(),
                 this.createVMSnapshotCmd.getDescription(), this.createVMSnapshotCmd.snapshotMemory());
+        }
         if (vmsnapshot != null) {
             setEntityId(vmsnapshot.getId());
             this.createVMSnapshotCmd.setEntityId(vmsnapshot.getId());
