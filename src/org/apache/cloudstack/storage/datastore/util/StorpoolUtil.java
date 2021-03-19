@@ -515,6 +515,7 @@ public class StorpoolUtil {
         if (iops != null) {
             json.put("iops", iops);
         }
+        json.put("template", conn.getTemplateName());
         Map<String, String> tags = StorPoolHelper.addStorPoolTags(name, null, csTag, null);
         json.put("tags", tags);
         return POST("MultiCluster/VolumeCreate", json, conn);
