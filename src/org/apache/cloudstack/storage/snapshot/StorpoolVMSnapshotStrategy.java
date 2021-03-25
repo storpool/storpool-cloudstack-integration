@@ -353,11 +353,15 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
                 }
                 String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(volumeObjectTO.getPath(), true);
                 VolumeDetailVO detail = volumeDetailsDao.findDetail(volumeObjectTO.getId(), StorpoolUtil.SP_PROVIDER_NAME);
-                SpApiResponse updateVolumeResponse = StorpoolUtil.volumeUpdateRename(volumeName, "", detail != null ? StorpoolStorageAdaptor.getVolumeNameFromPath(detail.getValue(), false) : null, conn);
+                if (detail != null) {
+                    SpApiResponse updateVolumeResponse = StorpoolUtil.volumeUpdateRename(volumeName, "", StorpoolStorageAdaptor.getVolumeNameFromPath(detail.getValue(), false), conn);
 
-                if (updateVolumeResponse.getError() != null) {
-                    StorpoolUtil.spLog("StorpoolVMSnapshotStrategy.canHandle - Could not update StorPool's volume %s to it's globalId due to %s", volumeName, updateVolumeResponse.getError().getDescr());
-                    err = String.format("StorpoolVMSnapshotStrategy.canHandle - Could not update StorPool's volume %s to it's globalId due to %s", volumeName, updateVolumeResponse.getError().getDescr());
+                    if (updateVolumeResponse.getError() != null) {
+                        StorpoolUtil.spLog("StorpoolVMSnapshotStrategy.canHandle - Could not update StorPool's volume %s to it's globalId due to %s", volumeName, updateVolumeResponse.getError().getDescr());
+                        err = String.format("StorpoolVMSnapshotStrategy.canHandle - Could not update StorPool's volume %s to it's globalId due to %s", volumeName, updateVolumeResponse.getError().getDescr());
+                    } else {
+                        volumeDetailsDao.remove(detail.getId());
+                    }
                 }
 
                 SpApiResponse resp = StorpoolUtil.detachAllForced(volumeName, false, conn);

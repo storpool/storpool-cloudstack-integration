@@ -839,17 +839,22 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         final String volumeName = StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true);
         StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.revertSnapshot: snapshot: name=%s, uuid=%s, volume: name=%s, uuid=%s", snapshotName, snapshot.getUuid(), volumeName, vinfo.getUuid());
         SpConnectionDesc conn = StorpoolUtil.getSpConnection(vinfo.getDataStore().getUuid(), vinfo.getDataStore().getId(), storagePoolDetailsDao, primaryStoreDao);
-
-        VolumeDetailVO detail = volumeDetailsDao.findDetail(vinfo.getId(), StorpoolUtil.SP_PROVIDER_NAME);
-        SpApiResponse updateVolumeResponse = StorpoolUtil.volumeUpdateRename(StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), "", detail != null ? StorpoolStorageAdaptor.getVolumeNameFromPath(detail.getValue(), false) : null, conn);
         String err = null;
 
-        if (updateVolumeResponse.getError() != null) {
-            StorpoolUtil.spLog("Could not update StorPool's volume %s to it's globalId due to %s", StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), updateVolumeResponse.getError().getDescr());
-            err = String.format("Could not update StorPool's volume %s to it's globalId due to %s", StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), updateVolumeResponse.getError().getDescr());
-            completeResponse(err, callback);
-            return;
+        VolumeDetailVO detail = volumeDetailsDao.findDetail(vinfo.getId(), StorpoolUtil.SP_PROVIDER_NAME);
+        if (detail != null) {
+            //Rename volume to its global id only if it was migrated from UUID to global id
+            SpApiResponse updateVolumeResponse = StorpoolUtil.volumeUpdateRename(StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), "", StorpoolStorageAdaptor.getVolumeNameFromPath(detail.getValue(), false), conn);
+
+            if (updateVolumeResponse.getError() != null) {
+                StorpoolUtil.spLog("Could not update StorPool's volume %s to it's globalId due to %s", StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), updateVolumeResponse.getError().getDescr());
+                err = String.format("Could not update StorPool's volume %s to it's globalId due to %s", StorpoolStorageAdaptor.getVolumeNameFromPath(vinfo.getPath(), true), updateVolumeResponse.getError().getDescr());
+                completeResponse(err, callback);
+                return;
+            }
+            volumeDetailsDao.remove(detail.getId());
         }
+
         SpApiResponse resp = StorpoolUtil.detachAllForced(volumeName, false, conn);
         if (resp.getError() != null) {
             err = String.format("Could not detach StorPool volume %s due to %s", volumeName, resp.getError());
