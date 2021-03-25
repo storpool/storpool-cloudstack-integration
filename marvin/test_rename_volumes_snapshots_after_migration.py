@@ -692,12 +692,6 @@ class TestRenameObjectsWithUuids(cloudstackTestCase):
 
         snapshot = Snapshot.create(self.apiclient, volume_id = listvol[0].id)
 
-        volume = listvol[0]
-        vol = sptypes.VolumeUpdateDesc(rename = volume.id)
-        name = volume.path.split("/")[3]
-
-        rename = self.spapi.volumeUpdate(volumeName = "~" + name, json = vol)
-        
         virtual_machine.stop(self.apiclient, forced = True)
 
         globalId = self.storpool_snapshot_globalid(snapshot)
