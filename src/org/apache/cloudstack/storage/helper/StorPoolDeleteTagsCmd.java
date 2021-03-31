@@ -1,11 +1,14 @@
 package org.apache.cloudstack.storage.helper;
 
 import java.util.List;
+import java.util.Map;
 
 import javax.inject.Inject;
 
 import org.apache.cloudstack.api.APICommand;
+import org.apache.cloudstack.api.ApiConstants;
 import org.apache.cloudstack.api.BaseAsyncCmd;
+import org.apache.cloudstack.api.Parameter;
 import org.apache.cloudstack.api.ServerApiException;
 import org.apache.cloudstack.api.command.user.tag.DeleteTagsCmd;
 import org.apache.cloudstack.api.response.SuccessResponse;
@@ -31,6 +34,20 @@ import com.cloud.vm.dao.VMInstanceDao;
 requestHasSensitiveInfo = false, responseHasSensitiveInfo = false)
 public class StorPoolDeleteTagsCmd extends BaseAsyncCmd{
     private static final Logger log = Logger.getLogger(StorPoolDeleteTagsCmd.class);
+
+    @Parameter(name = ApiConstants.TAGS, type = CommandType.MAP, description = "Delete tags matching key/value pairs")
+    private Map tag;
+
+    @Parameter(name = ApiConstants.RESOURCE_TYPE, type = CommandType.STRING, required = true, description = "Delete tag by resource type")
+    private String resourceType;
+
+    @Parameter(name = ApiConstants.RESOURCE_IDS,
+               type = CommandType.LIST,
+               required = true,
+               collectionType = CommandType.STRING,
+               description = "Delete tags for resource id(s)")
+    private List<String> resourceIds;
+
     private DeleteTagsCmd deleteTagsCmd;
     private StorPoolReplaceCommandsHelper.StorPoolReplaceCommandsUtil replaceCommands = StorPoolReplaceCommandsHelper.getStorPoolReplaceCommandsUtil();
     @Inject
