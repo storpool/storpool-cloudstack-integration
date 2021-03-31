@@ -20,9 +20,13 @@ import javax.inject.Inject;
 
 import org.apache.cloudstack.api.APICommand;
 import org.apache.cloudstack.api.ApiCommandJobType;
+import org.apache.cloudstack.api.ApiConstants;
 import org.apache.cloudstack.api.BaseAsyncCmd;
+import org.apache.cloudstack.api.Parameter;
 import org.apache.cloudstack.api.command.user.template.DeleteTemplateCmd;
 import org.apache.cloudstack.api.response.SuccessResponse;
+import org.apache.cloudstack.api.response.TemplateResponse;
+import org.apache.cloudstack.api.response.ZoneResponse;
 import org.apache.cloudstack.engine.subsystem.api.storage.TemplateDataFactory;
 import org.apache.cloudstack.engine.subsystem.api.storage.TemplateInfo;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
@@ -47,6 +51,16 @@ import com.cloud.utils.exception.CloudRuntimeException;
             requestHasSensitiveInfo = false, responseHasSensitiveInfo = false)
 public class StorPoolDeleteTemplateCmd extends BaseAsyncCmd {
     public static final Logger log = Logger.getLogger(StorPoolDeleteTemplateCmd.class.getName());
+
+    @Parameter(name = ApiConstants.ID, type = CommandType.UUID, entityType = TemplateResponse.class, required = true, description = "the ID of the template")
+    private Long id;
+
+    @Parameter(name = ApiConstants.ZONE_ID, type = CommandType.UUID, entityType = ZoneResponse.class, description = "the ID of zone of the template")
+    private Long zoneId;
+
+    @Parameter(name = ApiConstants.FORCED, type = CommandType.BOOLEAN, required = false, description = "Force delete a template.", since = "4.9+")
+    private Boolean forced;
+
     private DeleteTemplateCmd deleteTemplate;
     private StorPoolReplaceCommandsHelper.StorPoolReplaceCommandsUtil replaceCommands = StorPoolReplaceCommandsHelper.getStorPoolReplaceCommandsUtil();
     @Inject
