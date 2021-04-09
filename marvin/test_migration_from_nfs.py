@@ -105,30 +105,30 @@ class TestStoragePool(cloudstackTestCase):
         td = TestData()
         cls.testdata = td.testdata
         cls.helper = StorPoolHelper()
-
-        cls.debug("######################### zone %s" % cls.zone.id)
         storpool_primary_storage = cls.testdata[TestData.primaryStorage]
-        cls.debug("######################### storpool_primary_storage %s" % storpool_primary_storage)
         cls.template_name = storpool_primary_storage.get("name")
-        cls.debug("######################### cls.template_name %s" % cls.template_name)
-
         storpool_service_offerings = cls.testdata[TestData.serviceOffering]
-        cls.debug("######################### cls.storpool_service_offerings %s" % storpool_service_offerings)
 
         nfs_service_offerings = cls.testdata[TestData.serviceOfferingsPrimary]
-        cls.debug("######################### nfs_service_offerings %s" % nfs_service_offerings)
+        ceph_service_offerings = cls.testdata[TestData.serviceOfferingsCeph]
+
 
         storage_pool = list_storage_pools(
             cls.apiclient,
             name=cls.template_name
             )
-        cls.debug("######################### storage_pool %s" % storage_pool)
 
         nfs_storage_pool = list_storage_pools(
             cls.apiclient,
             name='primary'
             )
-        cls.debug("######################### nfs_storage_pool %s" % nfs_storage_pool)
+
+        ceph_primary_storage = cls.testdata[TestData.primaryStorage4]
+
+        cls.ceph_storage_pool = list_storage_pools(
+            cls.apiclient,
+            name=ceph_primary_storage.get("name")
+            )[0]
 
         service_offerings = list_service_offering(
             cls.apiclient,
@@ -137,6 +137,11 @@ class TestStoragePool(cloudstackTestCase):
         nfs_service_offering = list_service_offering(
             cls.apiclient,
             name='nfs'
+            )
+
+        ceph_service_offering = list_service_offering(
+            cls.apiclient,
+            name=ceph_primary_storage.get("name")
             )
 
         disk_offerings = list_disk_offering(
@@ -159,6 +164,11 @@ class TestStoragePool(cloudstackTestCase):
             nfs_service_offering = ServiceOffering.create(cls.apiclient, nfs_service_offerings)
         else:
             nfs_service_offering = nfs_service_offering[0]
+
+        if ceph_service_offering is None:
+            ceph_service_offering = ServiceOffering.create(cls.apiclient, ceph_service_offerings)
+        else:
+            ceph_service_offering = ceph_service_offering[0]
         #The version of CentOS has to be supported
         template = get_template(
              cls.apiclient,
@@ -167,7 +177,11 @@ class TestStoragePool(cloudstackTestCase):
         )
 
         cls.nfs_storage_pool = nfs_storage_pool[0]
-        cls.nfs_storage_pool = StoragePool.cancelMaintenance(cls.apiclient, cls.nfs_storage_pool.id)
+        if cls.nfs_storage_pool.state == "Maintenance":
+            cls.nfs_storage_pool = StoragePool.cancelMaintenance(cls.apiclient, cls.nfs_storage_pool.id)
+
+        if cls.ceph_storage_pool.state == "Maintenance":
+            cls.ceph_storage_pool = StoragePool.cancelMaintenance(cls.apiclient, cls.ceph_storage_pool.id)
 
         cls.account = cls.helper.create_account(
                             cls.apiclient,
@@ -211,6 +225,26 @@ class TestStoragePool(cloudstackTestCase):
             hypervisor= cls.hypervisor,
             rootdisksize=10
             )
+        cls.vm4 = VirtualMachine.create(cls.apiclient,
+            {"name":"StorPool-%s" % uuid.uuid4() },
+            zoneid=cls.zone.id,
+            templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
+            serviceofferingid=ceph_service_offering.id,
+            hypervisor= cls.hypervisor,
+            rootdisksize=10
+            )
+        cls.vm5 = VirtualMachine.create(cls.apiclient,
+            {"name":"StorPool-%s" % uuid.uuid4() },
+            zoneid=cls.zone.id,
+            templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
+            serviceofferingid=ceph_service_offering.id,
+            hypervisor= cls.hypervisor,
+            rootdisksize=10
+            )
         cls.storage_pool = StoragePool.update(cls.apiclient,
                                               id=cls.storage_pool.id,
                                               tags = ["ssd, nfs"])
@@ -246,7 +280,12 @@ class TestStoragePool(cloudstackTestCase):
     @classmethod
     def cleanUpCloudStack(cls):
         try:
-            cls.nfs_storage_pool = StoragePool.enableMaintenance(cls.apiclient, cls.nfs_storage_pool.id)
+            if cls.nfs_storage_pool.state is not "Maintenance":
+                cls.nfs_storage_pool = StoragePool.enableMaintenance(cls.apiclient, cls.nfs_storage_pool.id)
+
+            if cls.ceph_storage_pool.state is not "Maintenance":
+                cls.ceph_storage_pool = StoragePool.enableMaintenance(cls.apiclient, cls.ceph_storage_pool.id)
+
             cls.storage_pool = StoragePool.update(cls.apiclient,
                                               id=cls.storage_pool.id,
                                               tags = ["ssd"])
@@ -323,7 +362,6 @@ class TestStoragePool(cloudstackTestCase):
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_3_migrate_volume_from_nfs_to_storpool(self):
         '''Test write on disk before migrating volume from NFS primary storage
-         to StorPool and create template from volume.
          Check that data is on disk after migration'''
 
         try:
@@ -356,14 +394,13 @@ class TestStoragePool(cloudstackTestCase):
             "Check the random data has be write into temp file!"
         )
 
-        time.sleep(30)
-
         self.vm3.stop(self.apiclient, forced=True)
         volumes = list_volumes(
             self.apiclient,
             virtualmachineid = self.vm3.id,
             listall=True
             )
+        time.sleep(30)
         for v in volumes:
             cmd = migrateVolume.migrateVolumeCmd()
             cmd.storageid = self.storage_pool.id
@@ -383,21 +420,9 @@ class TestStoragePool(cloudstackTestCase):
             except spapi.ApiError as err:
                 raise Exception(err)
 
-        services = {"displaytext": "Template-1", "name": "Template-1-name", "ostypeid": self.template.ostypeid, "ispublic": "true"}
-
-        template = Template.create_from_volume(self.apiclient, volumes[0], services)
-
-        virtual_machine = VirtualMachine.create(self.apiclient,
-            {"name":"StorPool-%s" % uuid.uuid4() },
-            zoneid=self.zone.id,
-            templateid=template.id,
-            serviceofferingid=self.service_offering.id,
-            hypervisor=self.hypervisor,
-            rootdisksize=10
-            )
-
+        self.vm3.start(self.apiclient)
         try:
-            ssh_client = virtual_machine.get_ssh_client(reconnect=True)
+            ssh_client = self.vm3.get_ssh_client(reconnect=True)
 
             cmds = [
                 "cat %s/%s" % (self.test_dir, self.random_data)
@@ -410,7 +435,7 @@ class TestStoragePool(cloudstackTestCase):
 
         except Exception:
             self.fail("SSH failed for Virtual machine: %s" %
-                      virtual_machine.ipaddress)
+                      self.vm3.ipaddress)
 
         self.assertEqual(
             self.random_data_0,
@@ -418,6 +443,151 @@ class TestStoragePool(cloudstackTestCase):
             "Check the random data is equal with the ramdom file!"
         )
 
-        self.assertIsNotNone(template, "Template is None")
-        self.assertIsInstance(template, Template, "Template is instance of template")
-        self._cleanup.append(template)
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_4_migrate_volume_from_ceph_to_storpool(self):
+        '''Test write on disk before migrating volume from Ceph primary storage
+         Check that data is on disk after migration'''
+        try:
+            # Login to VM and write data to file system
+            ssh_client = self.vm4.get_ssh_client(reconnect = True)
+
+            cmds = [
+                "echo %s > %s/%s" %
+                (self.random_data_0, self.test_dir, self.random_data),
+                "sync",
+                "sleep 1",
+                "sync",
+                "sleep 1",
+                "cat %s/%s" %
+                (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" % self.vm4.ipaddress)
+
+        self.assertEqual(self.random_data_0, result[0],  "Check the random data has be write into temp file!")
+
+
+        self.storage_pool = StoragePool.update(self.apiclient,
+                                              id=self.storage_pool.id,
+                                              tags = ["ceph"])
+        self.vm4.stop(self.apiclient, forced=True)
+        time.sleep(30)
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.vm4.id,
+            listall=True
+            )
+        for v in volumes:
+            cmd = migrateVolume.migrateVolumeCmd()
+            cmd.storageid = self.storage_pool.id
+            cmd.volumeid = v.id
+            volume =  self.apiclient.migrateVolume(cmd)
+            self.assertEqual(volume.storageid, self.storage_pool.id, "Did not migrate volume from Ceph to StorPool")
+
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.vm4.id,
+            listall=True
+            )
+        for v in volumes:
+            name = v.path.split("/")[3]
+            try:
+                sp_volume = self.spapi.volumeList(volumeName="~" + name)
+            except spapi.ApiError as err:
+                raise Exception(err)
+
+
+        self.vm4.start(self.apiclient)
+        try:
+            ssh_client = self.vm4.get_ssh_client(reconnect=True)
+
+            cmds = [
+                "cat %s/%s" % (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      self.vm4.ipaddress)
+
+        self.assertEqual(self.random_data_0, result[0], "Check the random data is equal with the ramdom file!")
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_5_migrate_vm_from_ceph_to_storpool(self):
+        ''' Test migrate virtual machine from Ceph primary storage to StorPool'''
+        try:
+            # Login to VM and write data to file system
+            ssh_client = self.vm5.get_ssh_client(reconnect = True)
+
+            cmds = [
+                "echo %s > %s/%s" %
+                (self.random_data_0, self.test_dir, self.random_data),
+                "sync",
+                "sleep 1",
+                "sync",
+                "sleep 1",
+                "cat %s/%s" %
+                (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" % self.vm5.ipaddress)
+
+        self.assertEqual(self.random_data_0, result[0],  "Check the random data has be write into temp file!")
+
+        self.vm5.stop(self.apiclient, forced=True)
+        time.sleep(30)
+        cmd = migrateVirtualMachine.migrateVirtualMachineCmd()
+        cmd.virtualmachineid = self.vm5.id
+        cmd.storageid = self.storage_pool.id
+        migrated_vm = self.apiclient.migrateVirtualMachine(cmd)
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid = migrated_vm.id,
+            listall=True
+            )
+        for v in volumes:
+            name = v.path.split("/")[3]
+            try:
+                sp_volume = self.spapi.volumeList(volumeName="~" + name)
+            except spapi.ApiError as err:
+                raise Exception(err)
+
+            self.assertEqual(v.storageid, self.storage_pool.id, "Did not migrate virtual machine from Ceph to StorPool")
+
+        self.vm5.start(self.apiclient)
+        try:
+            ssh_client = self.vm5.get_ssh_client(reconnect=True)
+
+            cmds = [
+                "cat %s/%s" % (self.test_dir, self.random_data)
+            ]
+
+            for c in cmds:
+                self.debug(c)
+                result = ssh_client.execute(c)
+                self.debug(result)
+
+        except Exception:
+            self.fail("SSH failed for Virtual machine: %s" %
+                      self.vm5.ipaddress)
+
+        self.assertEqual(self.random_data_0, result[0], "Check the random data is equal with the ramdom file!")
+
