@@ -42,12 +42,13 @@ import com.cloud.hypervisor.kvm.storage.KVMStoragePoolManager;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
 import com.cloud.resource.CommandWrapper;
 import com.cloud.resource.ResourceWrapper;
+import com.cloud.storage.Storage.ImageFormat;
+import com.cloud.storage.Storage.StoragePoolType;
 
 @ResourceWrapper(handles = StorpoolDownloadVolumeCommand.class)
 public final class StorpoolDownloadVolumeCommandWrapper extends CommandWrapper<StorpoolDownloadVolumeCommand, CopyCmdAnswer, LibvirtComputingResource> {
 
     private static final Logger s_logger = Logger.getLogger(StorpoolDownloadVolumeCommandWrapper.class);
-    private KVMStoragePoolManager _storagePoolMgr;
 
     @Override
     public CopyCmdAnswer execute(final StorpoolDownloadVolumeCommand cmd, final LibvirtComputingResource libvirtComputingResource) {
@@ -65,7 +66,6 @@ public final class StorpoolDownloadVolumeCommandWrapper extends CommandWrapper<S
 
             if(srcDataStore instanceof NfsTO) {
                 SP_LOG("StorpoolDownloadVolumeCommandWrapper.execute: srcIsNfsTO");
-                final NfsTO nfsImageStore = (NfsTO)srcDataStore;
 
                 final String tmplturl = srcDataStore.getUrl() + srcDataStore.getPathSeparator() + src.getPath();
                 final int index = tmplturl.lastIndexOf("/");
@@ -111,7 +111,20 @@ public final class StorpoolDownloadVolumeCommandWrapper extends CommandWrapper<S
 
             SP_LOG("got src path: " + srcDisk.getPath() + " srcSize " + srcDisk.getVirtualSize());
 
-            final QemuImgFile srcFile = new QemuImgFile(srcDisk.getPath(), PhysicalDiskFormat.RAW);
+            String srcPath = null;
+            boolean isRBDPool = srcDisk.getPool().getType() == StoragePoolType.RBD;
+            if (isRBDPool) {
+                KVMStoragePool srcPool = srcDisk.getPool();
+                String rbdDestPath = srcPool.getSourceDir() + "/" + srcDisk.getName();
+                srcPath = KVMPhysicalDisk.RBDStringBuilder(srcPool.getSourceHost(),
+                        srcPool.getSourcePort(),
+                        srcPool.getAuthUserName(),
+                        srcPool.getAuthSecret(),
+                        rbdDestPath);
+            } else {
+                srcPath = srcDisk.getPath();
+            }
+            final QemuImgFile srcFile = new QemuImgFile(srcPath, PhysicalDiskFormat.RAW);
 
             final QemuImg qemu = new QemuImg(cmd.getWaitInMillSeconds());
             StorpoolStorageAdaptor.resize( Long.toString(srcDisk.getVirtualSize()), dst.getPath());
@@ -123,6 +136,9 @@ public final class StorpoolDownloadVolumeCommandWrapper extends CommandWrapper<S
             SP_LOG("SRC format=%s, DST format=%s",srcFile.getFormat(), dstFile.getFormat());
             qemu.convert(srcFile, dstFile);
             SP_LOG("StorpoolDownloadVolumeCommandWrapper VolumeObjectTO format=%s, hypervisor=%s", dst.getFormat(), dst.getHypervisorType());
+            if (isRBDPool) {
+                dst.setFormat(ImageFormat.QCOW2);
+            }
             return new CopyCmdAnswer(dst);
         } catch (final Exception e) {
             final String error = "Failed to copy volume to primary: " + e.getMessage();

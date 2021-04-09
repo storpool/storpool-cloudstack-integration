@@ -67,11 +67,13 @@ class TestData():
     primaryStorage = "primarystorage"
     primaryStorage2 = "primarystorage2"
     primaryStorage3 = "primarystorage3"
+    primaryStorage4 = "primaryStorage4"
     provider = "provider"
     serviceOffering = "serviceOffering"
     serviceOfferingssd2 = "serviceOffering-ssd2"
     serviceOfferingsPrimary = "serviceOfferingsPrimary"
     serviceOfferingsIops = "serviceOfferingsIops"
+    serviceOfferingsCeph = "serviceOfferingsCeph"
     scope = "scope"
     StorPool = "StorPool"
     storageTag = ["ssd", "ssd2"]
@@ -117,6 +119,12 @@ class TestData():
                 TestData.provider: "StorPool",
                 "path": "/dev/storpool",
                 TestData.capacityBytes: 2251799813685248,
+                TestData.hypervisor: "KVM"
+            },
+            TestData.primaryStorage4: {
+                "name": "ceph",
+                TestData.scope: "ZONE",
+                TestData.provider: "RBD",
                 TestData.hypervisor: "KVM"
             },
             TestData.virtualMachine: {
@@ -165,6 +173,17 @@ class TestData():
                 "customizediops": False,
                 "hypervisorsnapshotreserve": 200,
                 "tags": "nfs"
+            },
+            TestData.serviceOfferingsCeph:{
+                "name": "ceph",
+                "displaytext": "Ceph Service offerings",
+                "cpunumber": 1,
+                "cpuspeed": 500,
+                "memory": 512,
+                "storagetype": "shared",
+                "customizediops": False,
+                "hypervisorsnapshotreserve": 200,
+                "tags": "ceph"
             },
             TestData.serviceOfferingsIops:{
                 "name": "iops",
