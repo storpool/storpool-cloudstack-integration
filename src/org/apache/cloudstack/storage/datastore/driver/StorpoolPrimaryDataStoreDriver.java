@@ -249,7 +249,9 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
         CreateCmdResult res = new CreateCmdResult(path, new Answer(null, err == null, err));
         res.setResult(err);
-        callback.complete(res);
+        if (callback != null) {
+            callback.complete(res);
+        }
     }
 
     @Override
