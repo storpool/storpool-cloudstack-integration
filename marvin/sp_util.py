@@ -58,6 +58,8 @@ class TestData():
     diskName = "diskname"
     diskOffering = "diskoffering"
     diskOffering2 = "diskoffering2"
+    cephDiskOffering = "cephDiskOffering"
+    nfsDiskOffering = "nfsDiskOffering"
     domainId = "domainId"
     hypervisor = "hypervisor"
     login = "login"
@@ -215,6 +217,28 @@ class TestData():
                 "maxiops": 500,
                 "hypervisorsnapshotreserve": 200,
                 TestData.tags: sp_template_2,
+                "storagetype": "shared"
+            },
+            TestData.cephDiskOffering: {
+                "name": "ceph",
+                "displaytext": "Ceph fixed disk offering",
+                "disksize": 5,
+                "customizediops": False,
+                "miniops": 300,
+                "maxiops": 500,
+                "hypervisorsnapshotreserve": 200,
+                TestData.tags: "ceph",
+                "storagetype": "shared"
+            },
+            TestData.nfsDiskOffering: {
+                "name": "nfs",
+                "displaytext": "NFS fixed disk offering",
+                "disksize": 5,
+                "customizediops": False,
+                "miniops": 300,
+                "maxiops": 500,
+                "hypervisorsnapshotreserve": 200,
+                TestData.tags: "nfs",
                 "storagetype": "shared"
             },
             TestData.volume_1: {
