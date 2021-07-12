@@ -652,7 +652,7 @@ class TestStoragePool(cloudstackTestCase):
                     flag = True
                     self.debug('################ %s' % sp_snapshot)
             if flag == False:
-                raise Exception("Could not find snapshot in snapsho details")
+                raise Exception("Could not find snapshot in snapshot details")
         except spapi.ApiError as err:
            raise Exception(err)
 
@@ -1131,3 +1131,172 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsInstance(template, Template, "Template is instance of template")
         self._cleanup.append(template)
 
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_11_snapshot_to_volume_bypassed_secondary(self):
+        ''' Create volume from snapshot which is only on primary storage
+        '''
+        virtual_machine = VirtualMachine.create(self.apiclient,
+            {"name":"StorPool-%s" % uuid.uuid4() },
+            zoneid=self.zone.id,
+            templateid=self.template.id,
+            accountid=self.account.name,
+            domainid=self.account.domainid,
+            serviceofferingid=self.service_offering.id,
+            hypervisor=self.hypervisor,
+            rootdisksize=10
+            )
+        volume1 = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.virtual_machine.id,
+            type = "ROOT",
+            listall = True
+            )
+
+        Configurations.update(self.apiclient,
+            name = "sp.bypass.secondary.storage",
+            value = "true")
+
+        snapshot = Snapshot.create(
+            self.apiclient,
+            volume_id = volume1[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
+            )
+
+        self.getSnapshotName(snapshot)
+
+        self.assertIsNotNone(snapshot, "Could not create snapshot")
+        self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
+
+        volume = self.helper.create_custom_disk(
+            self.apiclient,
+            {"diskname":"StorPoolDisk" },
+            account=self.account.name,
+            domainid=self.account.domainid,
+            zoneid = self.zone.id,
+            snapshotid = snapshot.id
+            )
+
+        self.assertIsNotNone(volume, "Could not create volume from snapshot")
+        self.assertIsInstance(volume, Volume, "Volume is not instance of Volume")
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_12_snapshot_to_volume_bypassed_secondary(self):
+        ''' 
+            Expected failure
+            Try to create volume from snapshot which is deleted from primary and not exists on secondary storage
+        '''
+        virtual_machine = VirtualMachine.create(self.apiclient,
+            {"name":"StorPool-%s" % uuid.uuid4() },
+            zoneid=self.zone.id,
+            templateid=self.template.id,
+            accountid=self.account.name,
+            domainid=self.account.domainid,
+            serviceofferingid=self.service_offering.id,
+            hypervisor=self.hypervisor,
+            rootdisksize=10
+            )
+        volume1 = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.virtual_machine.id,
+            type = "ROOT",
+            listall = True
+            )
+
+        Configurations.update(self.apiclient,
+            name = "sp.bypass.secondary.storage",
+            value = "true")
+
+        snapshot = Snapshot.create(
+            self.apiclient,
+            volume_id = volume1[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
+            )
+
+        snapshot_name = self.getSnapshotName(snapshot)
+        self.spapi.snapshotDelete(snapshotName = snapshot_name)
+
+        self.assertIsNotNone(snapshot, "Could not create snapshot")
+        self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
+
+        with self.assertRaises(Exception):
+            volume = self.helper.create_custom_disk(
+                self.apiclient,
+                {"diskname":"StorPoolDisk" },
+                account=self.account.name,
+                domainid=self.account.domainid,
+                zoneid = self.zone.id,
+                snapshotid = snapshot.id
+                )
+        self.debug("Create volume failed!")
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_13_snapshot_to_volume_from_secondary(self):
+        ''' Try to create volume from snapshot which is deleted from primary and exists on secondary storage
+        '''
+        virtual_machine = VirtualMachine.create(self.apiclient,
+            {"name":"StorPool-%s" % uuid.uuid4() },
+            zoneid=self.zone.id,
+            templateid=self.template.id,
+            accountid=self.account.name,
+            domainid=self.account.domainid,
+            serviceofferingid=self.service_offering.id,
+            hypervisor=self.hypervisor,
+            rootdisksize=10
+            )
+        volume1 = list_volumes(
+            self.apiclient,
+            virtualmachineid = self.virtual_machine.id,
+            type = "ROOT",
+            listall = True
+            )
+
+        Configurations.update(self.apiclient,
+            name = "sp.bypass.secondary.storage",
+            value = "false")
+
+        snapshot = Snapshot.create(
+            self.apiclient,
+            volume_id = volume1[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
+            )
+
+        snapshot_name = self.getSnapshotName(snapshot)
+        self.spapi.snapshotDelete(snapshotName = snapshot_name)
+
+
+        self.assertIsNotNone(snapshot, "Could not create snapshot")
+        self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
+
+        volume = self.helper.create_custom_disk(
+            self.apiclient,
+            {"diskname":"StorPoolDisk" },
+            account=self.account.name,
+            domainid=self.account.domainid,
+            zoneid = self.zone.id,
+            snapshotid = snapshot.id
+            )
+
+        self.assertIsNotNone(volume, "Could not create volume from snapshot")
+        self.assertIsInstance(volume, Volume, "Volume is not instance of Volume")
+
+    @classmethod
+    def getSnapshotName(cls, snapshot):
+        try:
+            cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
+            cmd.snapshotid = snapshot.id
+            snapshot_details = cls.apiclient.getVolumeSnapshotDetails(cmd)
+            flag = False
+            for s in snapshot_details:
+                if s["snapshotDetailsName"] == snapshot.id:
+                    name = s["snapshotDetailsValue"].split("/")[3]
+                    sp_snapshot = cls.spapi.snapshotList(snapshotName = "~" + name)
+                    flag = True
+                    cls.debug('################ %s' % sp_snapshot)
+                    return "~" + name
+            if flag == False:
+                raise Exception("Could not find snapshot in snapshot details")
+        except spapi.ApiError as err:
+           raise Exception(err)
