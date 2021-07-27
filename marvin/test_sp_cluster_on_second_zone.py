@@ -29,7 +29,10 @@ from marvin.lib.base import (Account,
                              Template,
                              VirtualMachine,
                              VmSnapshot,
-                             Volume)
+                             Volume,
+                             SecurityGroup,
+                             Role,
+                             )
 from marvin.lib.common import (get_zone,
                                get_domain,
                                get_template,
@@ -59,6 +62,7 @@ from storpool import spapi
 from storpool import sptypes
 from marvin.configGenerator import configuration
 import uuid
+from sp_util import (TestData, StorPoolHelper)
 
 class TestStoragePool(cloudstackTestCase):
 
@@ -75,8 +79,11 @@ class TestStoragePool(cloudstackTestCase):
     def setUpCloudStack(cls):
         testClient = super(TestStoragePool, cls).getClsTestClient()
 
+        cls._cleanup = []
 
         cls.apiclient = testClient.getApiClient()
+        cls.helper = StorPoolHelper()
+
         cls.unsupportedHypervisor = False
         cls.hypervisor = testClient.getHypervisorInfo()
         if cls.hypervisor.lower() in ("hyperv", "lxc"):
@@ -245,13 +252,29 @@ class TestStoragePool(cloudstackTestCase):
         cls.services["small"]["zoneid"] = cls.zone.id
         cls.services["templates"]["ostypeid"] = template.ostypeid
         cls.services["zoneid"] = cls.zone.id
+        cls.services["diskofferingid"] = cls.disk_offerings.id
 
+        role = Role.list(cls.apiclient, name='Admin')
+
+        # Create VMs, VMs etc
+        cls.account = Account.create(
+                            cls.apiclient,
+                            cls.services["account"],
+                            domainid=cls.domain.id,
+                            roleid = role[0].id
+                            )
+
+        securitygroup = SecurityGroup.list(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid)[0]
+        cls.helper.set_securityGroups(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid, id = securitygroup.id)
+        cls._cleanup.append(cls.account)
 
         cls.volume_1 = Volume.create(
             cls.apiclient,
             {"diskname":"StorPoolDisk-1" },
             zoneid=cls.zone.id,
             diskofferingid=disk_offerings[0].id,
+            account=cls.account.name,
+            domainid=cls.account.domainid
         )
 
         cls.volume_2 = Volume.create(
@@ -259,6 +282,8 @@ class TestStoragePool(cloudstackTestCase):
             {"diskname":"StorPoolDisk-2" },
             zoneid=cls.zone.id,
             diskofferingid=disk_offerings[0].id,
+            account=cls.account.name,
+            domainid=cls.account.domainid
         )
 
         cls.volume = Volume.create(
@@ -266,11 +291,15 @@ class TestStoragePool(cloudstackTestCase):
             {"diskname":"StorPoolDisk-3" },
             zoneid=cls.zone.id,
             diskofferingid=disk_offerings[0].id,
+            account=cls.account.name,
+            domainid=cls.account.domainid
         )
 
         cls.virtual_machine = VirtualMachine.create(
             cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -281,6 +310,8 @@ class TestStoragePool(cloudstackTestCase):
         cls.virtual_machine2 = VirtualMachine.create(
             cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -291,6 +322,8 @@ class TestStoragePool(cloudstackTestCase):
         cls.vm_migrate = VirtualMachine.create(
             cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
             zoneid=cls.zone.id,
             templateid=template.id,
             serviceofferingid=cls.service_offering.id,
@@ -303,13 +336,6 @@ class TestStoragePool(cloudstackTestCase):
         cls.random_data_0 = random_gen(size=100)
         cls.test_dir = "/tmp"
         cls.random_data = "random.data"
-        cls._cleanup = []
-        cls._cleanup.append(cls.virtual_machine)
-        cls._cleanup.append(cls.virtual_machine2)
-        cls._cleanup.append(cls.vm_migrate)
-        cls._cleanup.append(cls.volume_1)
-        cls._cleanup.append(cls.volume_2)
-        cls._cleanup.append(cls.volume)
         return
 
     @classmethod
@@ -352,7 +378,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = Volume.list(
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
-            type = "ROOT"
+            type = "ROOT",
+            listall = True,
             )
 
         backup_config = Configurations.update(self.apiclient,
@@ -360,7 +387,9 @@ class TestStoragePool(cloudstackTestCase):
             value = "false")
         snapshot = Snapshot.create(
            self.apiclient,
-            volume_id = volume[0].id
+            volume_id = volume[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
         self.assertIsNotNone(snapshot, "Could not create snapshot")
         self.assertIsInstance(snapshot, Snapshot, "Snapshot is not an instance of Snapshot")
@@ -372,6 +401,8 @@ class TestStoragePool(cloudstackTestCase):
             )
         virtual_machine = VirtualMachine.create(self.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -382,9 +413,7 @@ class TestStoragePool(cloudstackTestCase):
 
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
-        self._cleanup.append(snapshot)
         self._cleanup.append(template)
-        self._cleanup.append(virtual_machine)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_02_snapshot_to_template_bypass_secondary(self):
@@ -394,7 +423,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = list_volumes(
                         self.apiclient,
                         virtualmachineid = self.virtual_machine.id,
-                        type = "ROOT"
+                        type = "ROOT",
+                        listall = True,
                         )
         try:
             name = volume[0].path.split("/")[3]
@@ -410,7 +440,9 @@ class TestStoragePool(cloudstackTestCase):
 
         snapshot = Snapshot.create(
            self.apiclient,
-            volume_id = volume[0].id
+            volume_id = volume[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
         try:
             cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
@@ -453,6 +485,8 @@ class TestStoragePool(cloudstackTestCase):
             raise Exception("Template does not exists in Storpool")
         virtual_machine = VirtualMachine.create(self.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -462,9 +496,7 @@ class TestStoragePool(cloudstackTestCase):
         ssh_client = virtual_machine.get_ssh_client()
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
-        self._cleanup.append(snapshot)
         self._cleanup.append(template)
-        self._cleanup.append(virtual_machine)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_03_snapshot_volume_with_secondary(self):
@@ -477,11 +509,14 @@ class TestStoragePool(cloudstackTestCase):
         volume = list_volumes(
                         self.apiclient,
                         virtualmachineid = self.virtual_machine.id,
-                        type = "ROOT"
+                        type = "ROOT",
+                        listall = True,
                         )
         snapshot = Snapshot.create(
            self.apiclient,
-            volume_id = volume[0].id
+            volume_id = volume[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
         try:
             cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
@@ -499,7 +534,6 @@ class TestStoragePool(cloudstackTestCase):
         except spapi.ApiError as err:
             raise Exception(err)
         self.assertIsNotNone(snapshot, "Could not create snapshot")
-        self._cleanup.append(snapshot)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_04_snapshot_volume_bypass_secondary(self):
@@ -512,11 +546,14 @@ class TestStoragePool(cloudstackTestCase):
         volume = list_volumes(
                         self.apiclient,
                         virtualmachineid = self.virtual_machine.id,
-                        type = "ROOT"
+                        type = "ROOT",
+                        listall = True,
                         )
         snapshot = Snapshot.create(
            self.apiclient,
-            volume_id = volume[0].id
+            volume_id = volume[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
         try:
             cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
@@ -534,7 +571,6 @@ class TestStoragePool(cloudstackTestCase):
         except spapi.ApiError as err:
             raise Exception(err)
         self.assertIsNotNone(snapshot, "Could not create snapshot")
-        self._cleanup.append(snapshot)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_05_delete_template_bypassed_secondary(self):
@@ -543,7 +579,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = list_volumes(
                         self.apiclient,
                         virtualmachineid = self.virtual_machine.id,
-                        type = "ROOT"
+                        type = "ROOT",
+                        listall = True,
                         )
         try:
             name = volume[0].path.split("/")[3]
@@ -558,9 +595,10 @@ class TestStoragePool(cloudstackTestCase):
 
         snapshot = Snapshot.create(
            self.apiclient,
-            volume_id = volume[0].id
+            volume_id = volume[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
-        self._cleanup.append(snapshot)
 
         try:
             cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
@@ -586,7 +624,6 @@ class TestStoragePool(cloudstackTestCase):
             self.services,
             snapshotid = snapshot.id
             )
-        self._cleanup.append(template)
 
         flag = False
         storpoolGlId = None
@@ -625,7 +662,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = list_volumes(
                         self.apiclient,
                         virtualmachineid = self.virtual_machine.id,
-                        type = "ROOT"
+                        type = "ROOT",
+                        listall = True,
                         )
         try:
             name = volume[0].path.split("/")[3]
@@ -640,9 +678,10 @@ class TestStoragePool(cloudstackTestCase):
 
         snapshot = Snapshot.create(
            self.apiclient,
-            volume_id = volume[0].id
+            volume_id = volume[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
-        self._cleanup.append(snapshot)
 
         try:
             cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
@@ -672,7 +711,6 @@ class TestStoragePool(cloudstackTestCase):
             self.services,
             snapshotid = snapshot.id
             )
-        self._cleanup.append(template)
 
         flag = False
         globalId = None
@@ -733,7 +771,9 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             {"diskname":"StorPoolDisk-Delete" },
             zoneid = self.zone.id,
-            diskofferingid = self.disk_offerings.id
+            diskofferingid = self.disk_offerings.id,
+            account=self.account.name,
+            domainid=self.account.domainid
             )
         delete = volume
         self.virtual_machine2.stop(self.apiclient, forced=True)
@@ -756,7 +796,9 @@ class TestStoragePool(cloudstackTestCase):
 
         snapshot = Snapshot.create(
             self.apiclient,
-             volume_id = volume[0].id
+             volume_id = volume[0].id,
+             account=self.account.name,
+            domainid=self.account.domainid,
             )
 
         try:
@@ -823,7 +865,9 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             {"diskname":"StorPoolDisk-Delete" },
             zoneid = self.zone.id,
-            diskofferingid = self.disk_offerings.id
+            diskofferingid = self.disk_offerings.id,
+            account=self.account.name,
+            domainid=self.account.domainid
             )
         delete = volume
         self.virtual_machine2.attach_volume(
@@ -845,7 +889,9 @@ class TestStoragePool(cloudstackTestCase):
 
         snapshot = Snapshot.create(
             self.apiclient,
-             volume_id = volume[0].id
+             volume_id = volume[0].id,
+             account=self.account.name,
+            domainid=self.account.domainid,
             )
 
         try:
@@ -905,7 +951,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = list_volumes(
                         self.apiclient,
                         virtualmachineid = self.virtual_machine.id,
-                        type = "ROOT"
+                        type = "ROOT",
+                        listall = True,
                         )
 
         name = volume[0].path.split("/")[3]
@@ -920,10 +967,11 @@ class TestStoragePool(cloudstackTestCase):
 
         snapshot = Snapshot.create(
            self.apiclient,
-            volume_id = volume[0].id
+            volume_id = volume[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
 
-        self._cleanup.append(snapshot)
         try:
             cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
             cmd.snapshotid = snapshot.id
@@ -979,6 +1027,8 @@ class TestStoragePool(cloudstackTestCase):
         vm = VirtualMachine.create(
             self.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             zoneid=self.zone.id,
             templateid = template.id,
             serviceofferingid=self.service_offering.id,
@@ -987,7 +1037,6 @@ class TestStoragePool(cloudstackTestCase):
             )
 
         ssh_client = vm.get_ssh_client(reconnect=True)
-        self._cleanup.append(vm)
 
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -1232,7 +1281,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = list_volumes(
             self.apiclient,
             virtualmachineid = self.virtual_machine2.id,
-            type = "ROOT"
+            type = "ROOT",
+            listall = True,
             )
         volume = volume[0]
 
@@ -1656,7 +1706,9 @@ class TestStoragePool(cloudstackTestCase):
         '''
         snapshot = Snapshot.create(
             self.apiclient,
-            volume_id = self.volume_2.id
+            volume_id = self.volume_2.id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
 
         try:
@@ -1681,7 +1733,9 @@ class TestStoragePool(cloudstackTestCase):
         volume = self.create_volume(
             self.apiclient,
             zoneid = self.zone.id,
-            snapshotid = snapshot.id
+            snapshotid = snapshot.id,
+            account=self.account.name,
+            domainid=self.account.domainid
             )
 
         listvol = Volume.list(
@@ -1694,8 +1748,6 @@ class TestStoragePool(cloudstackTestCase):
         except spapi.ApiError as err:
            raise Exception(err)
 
-        self._cleanup.append(volume)
-        self._cleanup.append(snapshot)
         self.assertIsNotNone(volume, "Could not create volume from snapshot")
         self.assertIsInstance(volume, Volume, "Volume is not instance of Volume")
 
@@ -1722,6 +1774,8 @@ class TestStoragePool(cloudstackTestCase):
         snapshot = Snapshot.create(
             self.apiclient,
             self.volume.id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
 
         try:
@@ -1757,6 +1811,8 @@ class TestStoragePool(cloudstackTestCase):
         '''
         vm = VirtualMachine.create(self.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             zoneid = self.zone.id,
             templateid = self.template.id,
             serviceofferingid = self.service_offering.id,
@@ -1765,13 +1821,16 @@ class TestStoragePool(cloudstackTestCase):
             )
         list_volumes_of_vm = list_volumes(
             self.apiclient,
-            virtualmachineid = vm.id
+            virtualmachineid = vm.id,
+            listall = True,
             )
         self.assertIs(len(list_volumes_of_vm), 1, "VM has more disk than 1")
 
         snapshot = Snapshot.create(
             self.apiclient,
-            list_volumes_of_vm[0].id
+            list_volumes_of_vm[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
 
         try:
@@ -1794,8 +1853,6 @@ class TestStoragePool(cloudstackTestCase):
 
         self.assertEqual(list_volumes_of_vm[0].id, snapshot.volumeid, "Snapshot is not for the same volume")
 
-        self._cleanup.append(snapshot)
-        self._cleanup.append(vm)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_23_volume_to_template(self):
@@ -1804,7 +1861,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = Volume.list(
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
-            type = "ROOT"
+            type = "ROOT",
+            listall = True,
             )
 
         self.virtual_machine.stop(self.apiclient)
@@ -1817,6 +1875,8 @@ class TestStoragePool(cloudstackTestCase):
 
         virtual_machine = VirtualMachine.create(self.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -1827,7 +1887,6 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
         self._cleanup.append(template)
-        self._cleanup.append(virtual_machine)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_24_migrate_vm_to_another_storage(self):
@@ -1835,7 +1894,8 @@ class TestStoragePool(cloudstackTestCase):
         '''
         list_volumes_of_vm = list_volumes(
             self.apiclient,
-            virtualmachineid = self.vm_migrate.id
+            virtualmachineid = self.vm_migrate.id,
+            listall = True,
             )
 
         self.assertTrue(len(list_volumes_of_vm) == 1, "There are more volumes attached to VM")
@@ -1874,6 +1934,8 @@ class TestStoragePool(cloudstackTestCase):
         """ Create Virtual Machine on another StorPool primary StoragePool"""
         virtual_machine = VirtualMachine.create(self.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             zoneid=self.zone.id,
             templateid=self.template.id,
             serviceofferingid=self.service_offering2.id,
@@ -1881,7 +1943,6 @@ class TestStoragePool(cloudstackTestCase):
             rootdisksize=10
             )
         self.assertIsNotNone(virtual_machine, "Could not create virtual machine on another Storpool primary storage")
-        self._cleanup.append(virtual_machine)
 
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -1890,6 +1951,8 @@ class TestStoragePool(cloudstackTestCase):
         '''
         virtual_machine = VirtualMachine.create(self.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             zoneid=self.zone.id,
             templateid=self.template.id,
             serviceofferingid=self.service_offering.id,
@@ -1899,11 +1962,14 @@ class TestStoragePool(cloudstackTestCase):
         volume1 = list_volumes(
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
-            type = "ROOT"
+            type = "ROOT",
+            listall = True,
             )
         snapshot = Snapshot.create(
             self.apiclient,
-            volume_id = volume1[0].id
+            volume_id = volume1[0].id,
+            account=self.account.name,
+            domainid=self.account.domainid,
             )
 
         self.assertIsNotNone(snapshot, "Could not create snapshot")
@@ -1912,12 +1978,11 @@ class TestStoragePool(cloudstackTestCase):
         volume = self.create_volume(
             self.apiclient,
             zoneid = self.zone.id,
-            snapshotid = snapshot.id
+            snapshotid = snapshot.id,
+            account=self.account.name,
+            domainid=self.account.domainid
             )
 
-        self._cleanup.append(volume)
-        self._cleanup.append(snapshot)
-        self._cleanup.append(virtual_machine)
         self.assertIsNotNone(volume, "Could not create volume from snapshot")
         self.assertIsInstance(volume, Volume, "Volume is not instance of Volume")
 
@@ -1940,7 +2005,8 @@ class TestStoragePool(cloudstackTestCase):
         volume = Volume.list(
             self.apiclient,
             virtualmachineid = self.virtual_machine.id,
-            type = "ROOT"
+            type = "ROOT",
+            listall = True,
             )
 
         self.virtual_machine.stop(self.apiclient)
@@ -1953,6 +2019,8 @@ class TestStoragePool(cloudstackTestCase):
 
         virtual_machine = VirtualMachine.create(self.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -1987,6 +2055,8 @@ class TestStoragePool(cloudstackTestCase):
 
         virtual_machine2 = VirtualMachine.create(self.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
+            accountid=self.account.name,
+            domainid=self.account.domainid,
             zoneid=self.zone.id,
             templateid=template.id,
             serviceofferingid=self.service_offering.id,
@@ -1998,13 +2068,9 @@ class TestStoragePool(cloudstackTestCase):
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
         self._cleanup.append(template)
-        self._cleanup.append(virtual_machine)
-        self._cleanup.append(virtual_machine2)
-        
-        
 
     @classmethod
-    def create_volume(self, apiclient, zoneid=None, snapshotid=None):
+    def create_volume(self, apiclient, zoneid=None, snapshotid=None, account=None, domainid=None):
         """Create Volume"""
         cmd = createVolume.createVolumeCmd()
         cmd.name = "Test"
@@ -2014,6 +2080,12 @@ class TestStoragePool(cloudstackTestCase):
 
         if snapshotid:
             cmd.snapshotid = snapshotid
+        
+        if account:
+            cmd.account=account
+        
+        if domainid:
+            cmd.domainid=domainid
         return Volume(apiclient.createVolume(cmd).__dict__)
 
     @classmethod
