@@ -22,6 +22,7 @@ import org.apache.cloudstack.storage.command.CopyCmdAnswer;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreDao;
 import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
@@ -83,7 +84,11 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy{
         if (srcType == DataObjectType.SNAPSHOT && dstType == DataObjectType.TEMPLATE && BackupManager.BypassSecondaryStorage.value()) {
             SnapshotInfo sinfo = (SnapshotInfo)srcData;
             VolumeInfo volume = sinfo.getBaseVolume();
-            String snapshotName= StorPoolHelper.getSnapshotName(sinfo.getId(), sinfo.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
+            StoragePoolVO storagePool = _storagePool.findById(volume.getPoolId());
+            if (!storagePool.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
+                return StrategyPriority.CANT_HANDLE;
+            }
+            String snapshotName = StorPoolHelper.getSnapshotName(sinfo.getId(), sinfo.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
             StorpoolUtil.spLog("StorPoolDataMotionStrategy.canHandle snapshot name=%s", snapshotName);
             SpConnectionDesc conn = StorpoolUtil.getSpConnection(volume.getDataStore().getUuid(), volume.getDataStore().getId(), _storagePoolDetails, _storagePool);
             if(snapshotName != null && StorpoolUtil.snapshotExists(snapshotName, conn)){
