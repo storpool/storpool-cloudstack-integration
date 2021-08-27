@@ -567,15 +567,15 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         SpApiResponse resp2 = StorpoolUtil.volumeFreeze(volumeNameToSnapshot, conn);
                         if (resp2.getError() != null) {
                             err = String.format("Could not freeze Storpool volume %s. Error: %s", name, resp2.getError());
+                        } else {
+                            StorpoolUtil.spLog("Storpool snapshot [%s] for a template exists. Creating template on Storpool with name [%s]", tinfo.getUuid(), name);
+                            TemplateObjectTO dstTO = (TemplateObjectTO) dstData.getTO();
+                            dstTO.setPath(StorpoolUtil.devPath(StorpoolUtil.getNameFromResponse(resp, false)));
+                            dstTO.setSize(size);
+                            answer = new CopyCmdAnswer(dstTO);
                         }
-                        log.info(String.format("Storpool volume=%s exists. Creating template on Storpool with name=%s",
-                                tinfo.getUuid(), name));
-                        TemplateObjectTO dstTO = (TemplateObjectTO) dstData.getTO();
-                        dstTO.setPath(StorpoolUtil.devPath(StorpoolUtil.getNameFromResponse(resp, false)));
-                        dstTO.setSize(size);
-                        answer = new CopyCmdAnswer(dstTO);
                     }
-                }else {
+                } else {
                     if (snapshotName != null) {
                         //if snapshot was deleted by any reason from StorPool we have to delete it from CloudStack's DB as well
                         templDataStoreVO.setLocalDownloadPath("");
@@ -603,19 +603,10 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                             SpApiResponse resp2 = StorpoolUtil.volumeFreeze(StorpoolUtil.getNameFromResponse(resp, true), conn);
                             if (resp2.getError() != null) {
                                 err = String.format("Could not freeze Storpool volume %s. Error: %s", name, resp2.getError());
-                                if (resp.getError() != null) {
-                                    log.warn(String.format("Tried to delete volume due to %s ,Could not cleanup Storpool volume %s. Error: %s", err, name, resp.getError()));
-                                }
                             }
                         } else {
                             err = answer != null ? answer.getDetails() : "Unknown error while downloading template. Null answer returned.";
                         }
-                    }
-                }
-                if (err != null) {
-                    resp = StorpoolUtil.volumeDelete(StorpoolUtil.getNameFromResponse(resp, true), conn);
-                    if (resp.getError() != null) {
-                        log.warn(String.format("Could not clean-up Storpool volume %s. Error: %s", name, resp.getError()));
                     }
                 }
                 if (err != null) {
