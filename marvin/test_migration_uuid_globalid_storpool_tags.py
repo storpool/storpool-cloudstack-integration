@@ -337,7 +337,7 @@ class MigrationUuidToGlobalIdTags(unittest.TestCase):
             self.apiclient,
             resourceIds=self.virtual_machine.id,
             resourceType='UserVm',
-            tags={'vc_policy': 'testing_vc_policy'}
+            tags={'vc-policy': 'testing_vc-policy'}
         )
         vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id)
         vm_tags = vm[0].tags
@@ -363,7 +363,7 @@ class MigrationUuidToGlobalIdTags(unittest.TestCase):
             self.apiclient,
             resourceIds=self.virtual_machine2.id,
             resourceType='UserVm',
-            tags={'vc_policy': 'testing_vc_policy'}
+            tags={'vc-policy': 'testing_vc-policy'}
         )
         vm = list_virtual_machines(self.apiclient,id = self.virtual_machine2.id)
         vm_tags = vm[0].tags
@@ -400,7 +400,7 @@ class MigrationUuidToGlobalIdTags(unittest.TestCase):
             self.apiclient,
             resourceIds=self.virtual_machine4.id,
             resourceType='UserVm',
-            tags={'vc_policy': 'testing_vc_policy'}
+            tags={'vc-policy': 'testing_vc-policy'}
         )
 
         vm = list_virtual_machines(self.apiclient,id = self.virtual_machine4.id)
@@ -448,7 +448,7 @@ class MigrationUuidToGlobalIdTags(unittest.TestCase):
             self.apiclient,
             resourceIds=vm.id,
             resourceType='UserVm',
-            tags={'vc_policy': 'testing_vc_policy'}
+            tags={'vc-policy': 'testing_vc-policy'}
         )
 
         vm_list = list_virtual_machines(self.apiclient,id = vm.id)
