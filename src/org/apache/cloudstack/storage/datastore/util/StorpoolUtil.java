@@ -126,7 +126,7 @@ public class StorpoolUtil {
     public static final String SP_PROVIDER_NAME = "StorPool";
     public static final String SP_DEV_PATH = "/dev/storpool-byid/";
     public static final String SP_OLD_PATH = "/dev/storpool/";
-    public static final String SP_VC_POLICY = "vc_policy";
+    public static final String SP_VC_POLICY = "vc-policy";
     public static final String GLOBAL_ID = "snapshotGlobalId";
     public static final String UPDATED_DETAIL = "renamed";
     public static final String SP_STORAGE_POOL_ID = "spStoragePoolId";

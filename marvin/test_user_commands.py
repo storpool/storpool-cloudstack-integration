@@ -274,7 +274,7 @@ class TestStoragePool(cloudstackTestCase):
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_01_set_vcpolicy_tag_to_vm_with_attached_disks(self):
-        ''' Test set vc_policy tag to VM with one attached disk
+        ''' Test set vc-policy tag to VM with one attached disk
         '''
         volume_attached = self.virtual_machine.attach_volume(
             self.userapiclient,
@@ -285,7 +285,7 @@ class TestStoragePool(cloudstackTestCase):
                 self.userapiclient,
                 resourceIds=self.virtual_machine.id,
                 resourceType='UserVm',
-                tags={'vc_policy': 'testing_vc_policy'}
+                tags={'vc-policy': 'testing_vc-policy'}
             )
         except Exception as e:
             self.debug("##################### test_01_set_vcpolicy_tag_to_vm_with_attached_disks %s" % e)
@@ -466,13 +466,13 @@ class TestStoragePool(cloudstackTestCase):
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_05_set_vcpolicy_tag_with_admin_and_try_delete_with_user(self):
-        ''' Test set vc_policy tag to VM with one attached disk
+        ''' Test set vc-policy tag to VM with one attached disk
         '''
         tag = Tag.create(
                 self.apiclient,
                 resourceIds=self.virtual_machine.id,
                 resourceType='UserVm',
-                tags={'vc_policy': 'testing_vc_policy'}
+                tags={'vc-policy': 'testing_vc-policy'}
             )
 
         self.debug('######################### test_05_set_vcpolicy_tag_with_admin_and_try_delete_with_user tags ######################### ')
@@ -492,7 +492,7 @@ class TestStoragePool(cloudstackTestCase):
             Tag.delete(self.userapiclient,
                 resourceIds=self.virtual_machine.id,
                 resourceType='UserVm',
-                tags={'vc_policy': 'testing_vc_policy'}
+                tags={'vc-policy': 'testing_vc-policy'}
                 )
         except Exception as e:
             self.debug("##################### test_05_set_vcpolicy_tag_with_admin_and_try_delete_with_user %s " % e)

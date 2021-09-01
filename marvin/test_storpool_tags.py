@@ -244,7 +244,7 @@ class TestStoragePool(cloudstackTestCase):
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_01_set_vcpolicy_tag_to_vm_with_attached_disks(self):
-        ''' Test set vc_policy tag to VM with one attached disk
+        ''' Test set vc-policy tag to VM with one attached disk
         '''
         volume_attached = self.virtual_machine.attach_volume(
             self.apiclient,
@@ -254,7 +254,7 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             resourceIds=self.virtual_machine.id,
             resourceType='UserVm',
-            tags={'vc_policy': 'testing_vc_policy'}
+            tags={'vc-policy': 'testing_vc-policy'}
         )
         vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id, listall=True)
         vm_tags = vm[0].tags
@@ -269,7 +269,7 @@ class TestStoragePool(cloudstackTestCase):
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_02_set_vcpolicy_tag_to_attached_disk(self):
-        """ Test set vc_policy tag to new disk attached to VM"""
+        """ Test set vc-policy tag to new disk attached to VM"""
         volume_attached = self.virtual_machine.attach_volume(
                 self.apiclient,
                 self.volume_2
@@ -306,7 +306,7 @@ class TestStoragePool(cloudstackTestCase):
             listall=True)
         vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id, listall=True)
         vm_tags =  vm[0].tags
-        self.debug('######################### test_03_create_vm_snapshot_vc_policy_tag tags ######################### ')
+        self.debug('######################### test_03_create_vm_snapshot_vc-policy_tag tags ######################### ')
 
         self.vc_policy_tags(volumes, vm_tags, vm)
 
@@ -439,7 +439,7 @@ class TestStoragePool(cloudstackTestCase):
             )
         vm = list_virtual_machines(self.apiclient,id = self.virtual_machine.id, listall=True)
         vm_tags =  vm[0].tags
-        self.debug('######################### test_04_revert_vm_snapshots_vc_policy_tag tags #########################')
+        self.debug('######################### test_04_revert_vm_snapshots_vc-policy_tag tags #########################')
 
         self.vc_policy_tags(volumes, vm_tags, vm)
 
@@ -487,7 +487,7 @@ class TestStoragePool(cloudstackTestCase):
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_06_remove_vcpolicy_tag_when_disk_detached(self):
-        """ Test remove vc_policy tag to disk detached from VM"""
+        """ Test remove vc-policy tag to disk detached from VM"""
         time.sleep(60)
         volume_detached = self.virtual_machine.detach_volume(
                 self.apiclient,
@@ -505,11 +505,11 @@ class TestStoragePool(cloudstackTestCase):
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_07_delete_vcpolicy_tag(self):
-        """ Test delete vc_policy tag of VM"""
+        """ Test delete vc-policy tag of VM"""
         Tag.delete(self.apiclient,
             resourceIds=self.virtual_machine.id,
             resourceType='UserVm',
-            tags={'vc_policy': 'testing_vc_policy'})
+            tags={'vc-policy': 'testing_vc-policy'})
 
         volumes = list_volumes(
             self.apiclient,
@@ -522,7 +522,7 @@ class TestStoragePool(cloudstackTestCase):
             tags = spvolume[0].tags
             for t in tags:
                 self.debug("######################### Storpool tag key:%s, value:%s ######################### " % (t, tags[t]))
-                self.assertFalse(t.lower() == 'vc_policy'.lower(), "There is VC Policy tag")
+                self.assertFalse(t.lower() == 'vc-policy'.lower(), "There is VC Policy tag")
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_08_vcpolicy_tag_to_reverted_disk(self):
@@ -530,7 +530,7 @@ class TestStoragePool(cloudstackTestCase):
             self.apiclient,
             resourceIds=self.virtual_machine2.id,
             resourceType='UserVm',
-            tags={'vc_policy': 'testing_vc_policy'}
+            tags={'vc-policy': 'testing_vc-policy'}
         )
         vm = list_virtual_machines(self.apiclient,id = self.virtual_machine2.id, listall=True)
         vm_tags = vm[0].tags
