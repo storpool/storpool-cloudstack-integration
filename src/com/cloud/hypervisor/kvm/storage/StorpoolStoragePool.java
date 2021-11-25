@@ -157,4 +157,8 @@ public class StorpoolStoragePool implements KVMStoragePool {
     public boolean isExternalSnapshot() {
         return false;
     }
+
+    public boolean supportsConfigDriveIso() {
+        return false;
+    }
 }

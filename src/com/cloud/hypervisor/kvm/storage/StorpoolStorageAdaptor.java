@@ -35,6 +35,7 @@ import org.apache.log4j.Logger;
 
 import com.cloud.agent.api.to.DiskTO;
 import com.cloud.storage.Storage;
+import com.cloud.storage.Storage.ImageFormat;
 import com.cloud.storage.Storage.ProvisioningType;
 import com.cloud.storage.Storage.StoragePoolType;
 import com.cloud.utils.exception.CloudRuntimeException;
@@ -412,5 +413,10 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
             log.warn("readGitPropertiesJson: " + e.getMessage());
             return version;
         }
+    }
+
+    public KVMPhysicalDisk createTemplateFromDirectDownloadFile(String templateFilePath, String destTemplatePath,
+            KVMStoragePool destPool, ImageFormat format, int timeout) {
+        return null;
     }
 }
