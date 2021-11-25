@@ -93,6 +93,7 @@ import com.cloud.storage.dao.VMTemplatePoolDao;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.storage.dao.VolumeDetailsDao;
 import com.cloud.tags.dao.ResourceTagDao;
+import com.cloud.utils.Pair;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.vm.VirtualMachineManager;
 import com.cloud.vm.dao.VMInstanceDao;
@@ -884,5 +885,31 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
     public void handleQualityOfServiceForVolumeMigration(VolumeInfo arg0, QualityOfServiceState arg1) {
         StorpoolUtil.spLog("handleQualityOfServiceForVolumeMigration with volume name=%s", arg0.getName());
+    }
+
+
+    public void copyAsync(DataObject srcData, DataObject destData, Host destHost,
+            AsyncCompletionCallback<CopyCommandResult> callback) {
+        copyAsync(srcData, destData, callback);
+    }
+
+    public boolean canProvideStorageStats() {
+        return false;
+    }
+
+    public Pair<Long, Long> getStorageStats(StoragePool storagePool) {
+        return null;
+    }
+
+    public boolean canProvideVolumeStats() {
+        return false;
+    }
+
+    public Pair<Long, Long> getVolumeStats(StoragePool storagePool, String volumeId) {
+        return null;
+    }
+
+    public boolean canHostAccessStoragePool(Host host, StoragePool pool) {
+        return false;
     }
 }
