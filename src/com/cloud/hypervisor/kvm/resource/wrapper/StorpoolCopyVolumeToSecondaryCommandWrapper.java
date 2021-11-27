@@ -57,6 +57,7 @@ public final class StorpoolCopyVolumeToSecondaryCommandWrapper extends CommandWr
             final VolumeObjectTO src = cmd.getSrcTO();
             final VolumeObjectTO dst = cmd.getDstTO();
             final KVMStoragePoolManager storagePoolMgr = libvirtComputingResource.getStoragePoolMgr();
+            final String destVolumePath = dst.getPath();
 
             SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: src=" + src.getPath() + "dst=" + dst.getPath());
 
@@ -72,6 +73,9 @@ public final class StorpoolCopyVolumeToSecondaryCommandWrapper extends CommandWr
             KVMStoragePool destPool;
             if( dstDataStore instanceof NfsTO ) {
                 destPool = storagePoolMgr.getStoragePoolByURI(dstDataStore.getUrl());
+                destPool.createFolder(destVolumePath);
+                storagePoolMgr.deleteStoragePool(destPool.getType(), destPool.getUuid());
+                destPool = storagePoolMgr.getStoragePoolByURI(dstDataStore.getUrl() + File.separator + destVolumePath);
                 SP_LOG("StorpoolCopyVolumeToSecondaryCommandWrapper.execute: Nfs destPool=%s ",destPool);
             } else if( dstDataStore instanceof PrimaryDataStoreTO ) {
                 PrimaryDataStoreTO primaryDst = (PrimaryDataStoreTO)dstDataStore;
@@ -95,7 +99,7 @@ public final class StorpoolCopyVolumeToSecondaryCommandWrapper extends CommandWr
 
                 final File file = new File(destPath);
                 final long size = file.exists() ? file.length() : 0;
-                dst.setPath(dst.getUuid());
+                dst.setPath(destVolumePath + File.separator + dst.getUuid());
                 dst.setSize(size);
 
             return new CopyCmdAnswer(dst);
