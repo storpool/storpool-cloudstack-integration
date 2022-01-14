@@ -201,7 +201,7 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy {
                 EndPoint ep2 = clusterId != null
                         ? RemoteHostEndPoint
                                 .getHypervisorHostEndPoint(StorPoolHelper.findHostByCluster(clusterId, _hostDao))
-                        : _selector.select(srcData, destData);
+                        : _selector.select(sInfo, destData);
                 if (ep2 == null) {
                     err = "No remote endpoint to send command, check if host or ssvm is down?";
                 } else {
