@@ -15,7 +15,7 @@ import com.cloud.utils.exception.CloudRuntimeException;
 public class BackupManager implements Configurable{
 
     public static final ConfigKey<Boolean> BypassSecondaryStorage = new ConfigKey<Boolean>(Boolean.class, "sp.bypass.secondary.storage", "Advanced", "false",
-            "For StorPool Managed storage backup to secodnary", true, ConfigKey.Scope.Global, null);
+            "For StorPool Managed storage backup to secondary", true, ConfigKey.Scope.Global, null);
     public static final ConfigKey<String> StorPoolClusterId = new ConfigKey<String>(String.class, "sp.cluster.id", "Advanced", "n/a",
                                     "For StorPool multi cluster authorization", true, ConfigKey.Scope.Cluster, null);
     public static final ConfigKey<Boolean> IsMigrationCompleted = new ConfigKey<Boolean>(Boolean.class, "sp.migration.to.global.ids.completed", "Hidden", "false",
