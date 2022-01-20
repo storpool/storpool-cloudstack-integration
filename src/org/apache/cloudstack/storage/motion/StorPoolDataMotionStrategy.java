@@ -149,13 +149,8 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy {
             }
             String snapshotName = StorPoolHelper.getSnapshotName(sinfo.getId(), sinfo.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
             StorpoolUtil.spLog("StorPoolDataMotionStrategy.canHandle snapshot name=%s", snapshotName);
-            SpConnectionDesc conn = StorpoolUtil.getSpConnection(volume.getDataStore().getUuid(), volume.getDataStore().getId(), _storagePoolDetails, _storagePool);
-            if (snapshotName != null && StorpoolUtil.snapshotExists(snapshotName, conn)) {
+            if (snapshotName != null) {
                 return StrategyPriority.HIGHEST;
-            }
-            SnapshotDetailsVO snapshotDetails = _snapshotDetailsDao.findDetail(sinfo.getId(), sinfo.getUuid());
-            if (snapshotDetails != null) {
-                _snapshotDetailsDao.remove(snapshotDetails.getId());
             }
         }
         return StrategyPriority.CANT_HANDLE;

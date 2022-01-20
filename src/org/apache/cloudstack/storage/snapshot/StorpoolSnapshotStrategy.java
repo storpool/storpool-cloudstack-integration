@@ -131,8 +131,7 @@ public class StorpoolSnapshotStrategy implements SnapshotStrategy {
         StoragePoolVO storage = _primaryDataStoreDao.findById(volume.getPoolId());
         String name = StorPoolHelper.getSnapshotName(snapshot.getId(), snapshot.getUuid(), _snapshotStoreDao, _snapshotDetailsDao);
         if (storage.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
-            SpConnectionDesc conn = StorpoolUtil.getSpConnection(storage.getUuid(), storage.getId(), storagePoolDetailsDao, _primaryDataStoreDao);
-            if (StorpoolUtil.snapshotExists(name, conn)) {
+            if (name != null) {
                 StorpoolUtil.spLog("StorpoolSnapshotStrategy.canHandle: globalId=%s", name);
 
                 return StrategyPriority.HIGHEST;
