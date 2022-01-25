@@ -94,6 +94,8 @@ For each CloudStack agent host:
 scp ./target/cloud-plugin-storage-volume-storpool-{version}.jar {AGENT_HOST}:/usr/share/cloudstack-agent/plugins/
 ```
 
+Note: CloudStack managements/agents services must be restarted after adding the plugin to the respective directories
+
 Note: Agents should have access to the StorPool management API, since attach and detach operations happens on the agent.
 This is a CloudStack design issue, can't do much about it.
 
@@ -290,11 +292,11 @@ In this case only snapshots won't be downloaded to secondary storage.
 
 ### Creating template from snapshot
 
-# If bypass option is enabled
+#### If bypass option is enabled
 
 The snapshot exists only on PRIMARY (StorPool) storage. From this snapshot it will be created a template on SECONADRY and PRIMARY storages.
 
-# If bypass option is disabled 
+#### If bypass option is disabled
 
 TODO: Maybe we should not use CloudStack functionality, and to use that one when bypass option is enabled
 
