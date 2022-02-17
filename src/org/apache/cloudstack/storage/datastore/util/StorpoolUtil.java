@@ -40,7 +40,9 @@ import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailVO;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
+import org.apache.cloudstack.storage.snapshot.BackupManager;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.methods.HttpGet;
@@ -48,8 +50,8 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.DefaultHttpClient;
-//import org.apache.http.impl.conn.BasicClientConnectionManager;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.log4j.Logger;
 
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
@@ -277,6 +279,15 @@ public class StorpoolUtil {
 
     public static SpConnectionDesc getSpConnection(String url, long poolId, StoragePoolDetailsDao poolDetails,
             PrimaryDataStoreDao storagePool) {
+        boolean isAlternateEndpointEnabled = BackupManager.AlternativeEndPointEnabled.valueIn(poolId);
+        if (isAlternateEndpointEnabled) {
+            String alternateEndpoint = BackupManager.AlternativeEndpoint.valueIn(poolId);
+            if (StringUtils.isNotEmpty(alternateEndpoint)) {
+                return new SpConnectionDesc(alternateEndpoint);
+            } else {
+                throw new CloudRuntimeException(String.format("Using an alternative endpoint of StorPool primary storage with id [%s] is enabled but no endpoint URL is provided", poolId));
+            }
+        }
         List<StoragePoolDetailVO> details = poolDetails.listDetails(poolId);
         String host = null;
         String authToken = null;
@@ -375,7 +386,7 @@ public class StorpoolUtil {
         }
 
 
-        try (DefaultHttpClient httpClient = new DefaultHttpClient()) {
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
             final String qry = String.format("http://%s/ctrl/1.0/%s", conn.getHostPort(), query);
             final URI uri = new URI(qry);
 

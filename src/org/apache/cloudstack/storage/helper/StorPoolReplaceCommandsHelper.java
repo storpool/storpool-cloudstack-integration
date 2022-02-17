@@ -252,7 +252,7 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
             }
         }
 
-        void updateVolumeTags(Long volumeID, Long vmId, String ... value) {
+        void updateVolumeTags(Long volumeID, Long vmId, String... value) {
             VolumeVO volume = volumeDao.findById(volumeID);
             VolumeInfo volumeObjectTO = volumeDataFactory.getVolume(volumeID);
             log.info(String.format("Volume id=%s, name=%s, instanceId=%s, path=%s", volume.getId(), volume.getName(),
@@ -261,10 +261,14 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
             String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volume.getPath(), true);
             if (name != null && pool.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
                 DataStore store = _dataStore.getPrimaryDataStore(volumeObjectTO.getDataStore().getUuid());
-                SpConnectionDesc conn = StorpoolUtil.getSpConnection(store.getUuid(), store.getId(), storagePoolDetailsDao, storagePool);
+                try {
+                    SpConnectionDesc conn = StorpoolUtil.getSpConnection(store.getUuid(), store.getId(), storagePoolDetailsDao, storagePool);
                     log.debug(String.format("Updating StorPool's volume=%s tags", name));
                     VMInstanceVO vm = _vmInstanceDao.findById(vmId);
                     StorpoolUtil.volumeUpadateTags(name, vm != null ? vm.getUuid() : "", null, conn, value.length > 0 ? value[0] : "");
+                } catch (Exception e) {
+                    StorpoolUtil.spLog("Could not update volume tags due to %s", e.getMessage());
+                }
             }
         }
 

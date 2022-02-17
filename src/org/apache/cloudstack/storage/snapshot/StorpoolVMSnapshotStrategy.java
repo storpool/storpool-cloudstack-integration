@@ -248,56 +248,62 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
 
         List<VolumeObjectTO> volumeTOs = vmSnapshotHelper.getVolumeTOList(vmSnapshot.getVmId());
         DataStore dataStore = dataStoreManager.getPrimaryDataStore(volumeTOs.get(0).getDataStore().getUuid());
-        SpConnectionDesc conn = StorpoolUtil.getSpConnection(dataStore.getUuid(), dataStore.getId(), storagePoolDetailsDao, storagePool);
 
-        String vmInstanceName = vmSnapshot.getUuid();
-        VMSnapshotTO parent = vmSnapshotHelper.getSnapshotWithParents(vmSnapshotVO).getParent();
-        VMSnapshotTO vmSnapshotTO = new VMSnapshotTO(vmSnapshot.getId(), vmSnapshot.getName(), vmSnapshot.getType(),
-                vmSnapshot.getCreated().getTime(), vmSnapshot.getDescription(), vmSnapshot.getCurrent(), parent, true);
-        StorpoolDeleteSnapshotVMCommand deleteSnapshotCommand = new StorpoolDeleteSnapshotVMCommand(vmInstanceName,
-                vmSnapshotTO, volumeTOs, null);
+        try {
+            SpConnectionDesc conn = StorpoolUtil.getSpConnection(dataStore.getUuid(), dataStore.getId(), storagePoolDetailsDao, storagePool);
 
-        SpApiResponse resp = null;
-        StorpoolDeleteVMSnapshotAnswer answer = null;
-        for (VolumeObjectTO volumeObjectTO : volumeTOs) {
-            String err = null;
-            VMSnapshotDetailsVO snapshotDetailsVO = vmSnapshotDetailsDao.findDetail(vmSnapshot.getId(), volumeObjectTO.getUuid());
-            String snapshotName = StorpoolStorageAdaptor.getVolumeNameFromPath(snapshotDetailsVO.getValue(), true);
-            if (snapshotName == null) {
-                err = String.format("Could not find StorPool's snapshot vm snapshot uuid=%s and volume uui=%s",
-                        vmSnapshot.getUuid(), volumeObjectTO.getUuid());
-                log.error("Could not delete snapshot for vm:" + err);
-            }
-            StorpoolUtil.spLog("StorpoolVMSnapshotStrategy.deleteVMSnapshot snapshotName=%s", snapshotName);
-            resp = StorpoolUtil.snapshotDelete(snapshotName, conn);
-            if (resp.getError() != null) {
-                err = String.format("Could not delete storpool vm error=%s", resp.getError());
-                log.error("Could not delete snapshot for vm:" + err);
-            } else {
-                // do we need to clean database?
-                if (snapshotDetailsVO != null) {
-                    vmSnapshotDetailsDao.remove(snapshotDetailsVO.getId());
+            String vmInstanceName = vmSnapshot.getUuid();
+            VMSnapshotTO parent = vmSnapshotHelper.getSnapshotWithParents(vmSnapshotVO).getParent();
+            VMSnapshotTO vmSnapshotTO = new VMSnapshotTO(vmSnapshot.getId(), vmSnapshot.getName(), vmSnapshot.getType(),
+                    vmSnapshot.getCreated().getTime(), vmSnapshot.getDescription(), vmSnapshot.getCurrent(), parent, true);
+            StorpoolDeleteSnapshotVMCommand deleteSnapshotCommand = new StorpoolDeleteSnapshotVMCommand(vmInstanceName,
+                    vmSnapshotTO, volumeTOs, null);
+
+            SpApiResponse resp = null;
+            StorpoolDeleteVMSnapshotAnswer answer = null;
+            for (VolumeObjectTO volumeObjectTO : volumeTOs) {
+                String err = null;
+                VMSnapshotDetailsVO snapshotDetailsVO = vmSnapshotDetailsDao.findDetail(vmSnapshot.getId(), volumeObjectTO.getUuid());
+                String snapshotName = StorpoolStorageAdaptor.getVolumeNameFromPath(snapshotDetailsVO.getValue(), true);
+                if (snapshotName == null) {
+                    err = String.format("Could not find StorPool's snapshot vm snapshot uuid=%s and volume uui=%s",
+                            vmSnapshot.getUuid(), volumeObjectTO.getUuid());
+                    log.error("Could not delete snapshot for vm:" + err);
+                }
+                StorpoolUtil.spLog("StorpoolVMSnapshotStrategy.deleteVMSnapshot snapshotName=%s", snapshotName);
+                resp = StorpoolUtil.snapshotDelete(snapshotName, conn);
+                if (resp.getError() != null) {
+                    err = String.format("Could not delete storpool vm error=%s", resp.getError());
+                    log.error("Could not delete snapshot for vm:" + err);
+                } else {
+                    // do we need to clean database?
+                    if (snapshotDetailsVO != null) {
+                        vmSnapshotDetailsDao.remove(snapshotDetailsVO.getId());
+                    }
+                }
+                if (err != null) {
+                    StorpoolUtil.spLog(
+                            "StorpoolVMSnapshotStrategy.deleteVMSnapshot delete snapshot=%s of gropusnapshot=%s failed due to %s",
+                            snapshotName, userVm.getInstanceName(), err);
+                    throw new CloudRuntimeException("Delete vm snapshot " + vmSnapshot.getName() + " of vm "
+                            + userVm.getInstanceName() + " failed due to " + err);
                 }
             }
-            if (err != null) {
-                StorpoolUtil.spLog(
-                        "StorpoolVMSnapshotStrategy.deleteVMSnapshot delete snapshot=%s of gropusnapshot=%s failed due to %s",
-                        snapshotName, userVm.getInstanceName(), err);
-                throw new CloudRuntimeException("Delete vm snapshot " + vmSnapshot.getName() + " of vm "
-                        + userVm.getInstanceName() + " failed due to " + err);
-            }
-        }
-        vmSnapshotDetailsDao.removeDetails(vmSnapshot.getId());
+            vmSnapshotDetailsDao.removeDetails(vmSnapshot.getId());
 
-        answer = new StorpoolDeleteVMSnapshotAnswer(deleteSnapshotCommand, volumeTOs);
-        processAnswer(vmSnapshotVO, userVm, answer, hostId);
-        long full_chain_size = 0;
-        for (VolumeObjectTO volumeTo : answer.getVolumeTOs()) {
-            publishUsageEvents(EventTypes.EVENT_VM_SNAPSHOT_DELETE, vmSnapshot, userVm, volumeTo);
-            full_chain_size += volumeTo.getSize();
+            answer = new StorpoolDeleteVMSnapshotAnswer(deleteSnapshotCommand, volumeTOs);
+            processAnswer(vmSnapshotVO, userVm, answer, hostId);
+            long full_chain_size = 0;
+            for (VolumeObjectTO volumeTo : answer.getVolumeTOs()) {
+                publishUsageEvents(EventTypes.EVENT_VM_SNAPSHOT_DELETE, vmSnapshot, userVm, volumeTo);
+                full_chain_size += volumeTo.getSize();
+            }
+            publishUsageEvents(EventTypes.EVENT_VM_SNAPSHOT_OFF_PRIMARY, vmSnapshot, userVm, full_chain_size, 0L);
+            return true;
+        } catch (Exception e) {
+            String errMsg = String.format("Could not delete group snapshots due to %s", e.getMessage());
+            throw new CloudRuntimeException(errMsg);
         }
-        publishUsageEvents(EventTypes.EVENT_VM_SNAPSHOT_OFF_PRIMARY, vmSnapshot, userVm, full_chain_size, 0L);
-        return true;
     }
 
     @Override
@@ -389,6 +395,10 @@ public class StorpoolVMSnapshotStrategy extends DefaultVMSnapshotStrategy {
             answer = new StorpoolRevertToVMSnapshotAnswer(revertToSnapshotCommand, volumeTOs, null);
             processAnswer(vmSnapshotVO, userVm, answer, hostId);
             result = true;
+        }
+        catch (Exception e) {
+            String errMsg = String.format("Cannot revert group snapshots due to %s", e.getMessage());
+            throw new CloudRuntimeException(errMsg);
         } finally {
             if (!result) {
                 try {
