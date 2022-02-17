@@ -131,7 +131,12 @@ public class StorPoolDeleteTemplateCmd extends BaseAsyncCmd {
                     VMTemplateDetailVO detail = vmTemplateDetailDao.findDetail(template.getTemplateId(), StorpoolUtil.SP_STORAGE_POOL_ID);
                     if (detail != null) {
                         StoragePoolVO spPrimary = primaryDataStoreDao.findById(Long.valueOf(detail.getValue()));
-                        SpConnectionDesc conn = StorpoolUtil.getSpConnection(spPrimary.getUuid(), spPrimary.getId(), storagePoolDetailsDao, primaryDataStoreDao);
+                        SpConnectionDesc conn = null;
+                        try {
+                            conn = StorpoolUtil.getSpConnection(spPrimary.getUuid(), spPrimary.getId(), storagePoolDetailsDao, primaryDataStoreDao);
+                        } catch (Exception e) {
+                            throw e;
+                        }
                         SpApiResponse resp = StorpoolUtil.snapshotDelete(snapshotName, conn);
                         if (resp.getError() == null || resp.getError().getName().equals("objectDoesNotExist")) {
                             vmTemplateDetailDao.remove(detail.getId());

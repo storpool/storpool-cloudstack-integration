@@ -115,7 +115,12 @@ public class StorPoolMigrationToGlobalId extends ManagerBase {
                 StorPoolHelper.appendLogger(log, LOG_FILE, "update");
                 for (StoragePoolVO storagePoolVO : poolList) {
                     String spTemplate = storagePoolVO.getUuid();
-                    SpConnectionDesc conn = StorpoolUtil.getSpConnection(spTemplate, storagePoolVO.getId(), storagePoolDetailsDao, storageDao);
+                    SpConnectionDesc conn = null;
+                    try {
+                        conn = StorpoolUtil.getSpConnection(spTemplate, storagePoolVO.getId(), storagePoolDetailsDao, storageDao);;
+                    } catch (Exception e) {
+                        throw e;
+                    }
                     JsonArray volumesList = StorpoolUtil.volumesList(conn);
                     storpoolVolumes.putAll(getStorPoolNamesAndGlobalIds(volumesList));
 

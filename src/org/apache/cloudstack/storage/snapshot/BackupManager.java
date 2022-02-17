@@ -21,6 +21,12 @@ public class BackupManager implements Configurable{
     public static final ConfigKey<Boolean> IsMigrationCompleted = new ConfigKey<Boolean>(Boolean.class, "sp.migration.to.global.ids.completed", "Hidden", "false",
             "For StorPool volumes, snapshots and group snapshots created with names that have to be migrated to StorPool's globalIds", true, ConfigKey.Scope.Global, null);
 
+    public static final ConfigKey<Boolean> AlternativeEndPointEnabled = new ConfigKey<Boolean>(Boolean.class, "sp.enable.alternative.endpoint", "Advanced", "false",
+            "Used for StorPool primary storage, definse if there is a need to be used alternative endpoint", true, ConfigKey.Scope.StoragePool, null);
+
+    public static final ConfigKey<String> AlternativeEndpoint = new ConfigKey<String>(String.class, "sp.alternative.endpoint", "Advanced", "",
+            "Used for StorPool primary storage for an alternative endpoint. Structure of the endpoint is - SP_API_HTTP=address:port;SP_AUTH_TOKEN=token;SP_TEMPLATE=template_name", true, ConfigKey.Scope.StoragePool, null);
+
     private static final String SELECT_VALUE = "Select value FROM `cloud`.`configuration` where name=\"sp.migration.to.global.ids.completed\"";
     private static final String UPDATE_CONFIG = "UPDATE `cloud`.`configuration` set category=?, value=? where name=\"sp.migration.to.global.ids.completed\"";
 
@@ -32,7 +38,7 @@ public class BackupManager implements Configurable{
     @Override
     public ConfigKey<?>[] getConfigKeys() {
         getAndUpdateMigrationConfig();
-        return new ConfigKey<?>[] { BypassSecondaryStorage, StorPoolClusterId, IsMigrationCompleted};
+        return new ConfigKey<?>[] { BypassSecondaryStorage, StorPoolClusterId, IsMigrationCompleted, AlternativeEndPointEnabled, AlternativeEndpoint };
     }
 
     private void getAndUpdateMigrationConfig() {
