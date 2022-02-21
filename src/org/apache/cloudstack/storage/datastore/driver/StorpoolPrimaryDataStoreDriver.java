@@ -570,7 +570,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 if (snapshotName != null) {
                     //no need to copy volume from secondary, because we have it already on primary. Just need to create a child snapshot from it.
                     //The child snapshot is needed when configuration "storage.cleanup.enabled" is true, not to clean the base snapshot and to lose everything
-                    resp = StorpoolUtil.volumeCreate(name, snapshotName, size, null, "no", "template", null, conn);
+                    resp = StorpoolUtil.volumeCreate(name, snapshotName, null, null, "no", "template", null, conn);
                     if (resp.getError() != null) {
                         err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
                     } else {
@@ -631,16 +631,18 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 final String name = vinfo.getUuid();
                 SpConnectionDesc conn = StorpoolUtil.getSpConnection(vinfo.getDataStore().getUuid(), vinfo.getDataStore().getId(), storagePoolDetailsDao, primaryStoreDao);
 
-                Long snapshotSize = templStoragePoolVO.getTemplateSize();
+                Long snapshotSize = tinfo.getSize();
 
                 long size = vinfo.getSize();
-                if (size < snapshotSize) {
+                if( size < snapshotSize )
+                {
                     StorpoolUtil.spLog(String.format("provided size is too small for snapshot. Provided %d, snapshot %d. Using snapshot size", size, snapshotSize));
                     size = snapshotSize;
                 }
                 StorpoolUtil.spLog(String.format("volume size is: %d", size));
                 Long vmId = vinfo.getInstanceId();
-                SpApiResponse resp = StorpoolUtil.volumeCreate(name, parentName, size, getVMInstanceUUID(vmId), getVcPolicyTag(vmId), "volume", vinfo.getMaxIops(), conn);
+                SpApiResponse resp = StorpoolUtil.volumeCreate(name, parentName, size, getVMInstanceUUID(vmId),
+                        getVcPolicyTag(vmId), "volume", vinfo.getMaxIops(), conn);
                 if (resp.getError() == null) {
                     updateStoragePool(dstData.getDataStore().getId(), vinfo.getSize());
 
