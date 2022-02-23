@@ -51,7 +51,8 @@ from marvin.cloudstackAPI import (listOsTypes,
                                   createTemplate,
                                   createVolume,
                                   resizeVolume,
-                                  getVolumeSnapshotDetails)
+                                  getVolumeSnapshotDetails,
+                                  migrateVirtualMachine)
 import time
 import pprint
 import random
@@ -1016,7 +1017,7 @@ class TestStoragePool(cloudstackTestCase):
             cmd = migrateVirtualMachine.migrateVirtualMachineCmd()
             cmd.virtualmachineid = self.vm_migrate.id
             if hostid:
-                cmd.hostid = hostid
+                cmd.hostid = self.hostid
             vm =   apiclient.migrateVirtualMachine(cmd)
             volume = list_volumes(
                 self.apiclient,
@@ -1031,16 +1032,37 @@ class TestStoragePool(cloudstackTestCase):
         '''
         self.assertFalse(hasattr(self.volume, 'virtualmachineid') , "Volume is not detached")
 
-        self.assertFalse(hasattr(self.volume, 'storageid') , "Volume is not detached")
-        volume = Volume.migrate(
+        vol = list_volumes(
+            self.apiclient,
+            id = self.volume.id,
+            listall = True
+            )[0]
+
+        self.debug("################# storage id is %s " % vol.storageid)
+        self.debug("################# primary_storage2 id is %s " % self.primary_storage2.id)
+        self.debug("################# primary_storage id is %s " % self.primary_storage.id)
+        if vol.storageid == self.primary_storage2.id:
+            self.assertFalse(hasattr(self.volume, 'storageid') , "Volume is not detached")
+            volume = Volume.migrate(
             self.apiclient,
             volumeid = self.volume.id,
-            storageid = self.primary_storage2.id
+            storageid = self.primary_storage.id
             )
 
-        self.assertIsNotNone(volume, "Volume is None")
+            self.assertIsNotNone(volume, "Volume is None")
 
-        self.assertEqual(volume.storageid, self.primary_storage2.id, "Storage is the same")
+            self.assertEqual(volume.storageid, self.primary_storage.id, "Storage is the same")
+        else:
+            self.assertFalse(hasattr(self.volume, 'storageid') , "Volume is not detached")
+            volume = Volume.migrate(
+                self.apiclient,
+                volumeid = self.volume.id,
+                storageid = self.primary_storage2.id
+                )
+    
+            self.assertIsNotNone(volume, "Volume is None")
+    
+            self.assertEqual(volume.storageid, self.primary_storage2.id, "Storage is the same")
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_13_create_vm_on_another_storpool_storage(self):
