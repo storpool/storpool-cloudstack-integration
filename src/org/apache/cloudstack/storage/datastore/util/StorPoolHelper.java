@@ -10,8 +10,10 @@ import java.util.Map;
 
 import org.apache.cloudstack.framework.config.dao.ConfigurationDao;
 import org.apache.cloudstack.framework.config.impl.ConfigurationVO;
+import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.SnapshotDataStoreVO;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.TemplateDataStoreVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
@@ -242,5 +244,17 @@ public class StorPoolHelper {
         TemplateDataStoreVO templ = templStoreDao.findByTemplate(id, role);
         templ.setLocalDownloadPath(path);
         templStoreDao.persist(templ);
+    }
+
+    public static boolean isStorPoolStorage (PrimaryDataStoreDao primaryStorageDao, VolumeDao volumeDao, long volumeId) {
+        VolumeVO volume = volumeDao.findById(volumeId);
+        if (volume == null || volume.getPoolId() == null) {
+            return false;
+        }
+        StoragePoolVO pool = primaryStorageDao.findById(volume.getPoolId());
+        if (pool != null && pool.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
+            return true;
+        }
+        return false;
     }
 }
