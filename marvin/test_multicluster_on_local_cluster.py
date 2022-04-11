@@ -348,20 +348,6 @@ class TestStoragePool(cloudstackTestCase):
         except spapi.ApiError as err:
            raise Exception(err)
 
-        volume = self.virtual_machine.detach_volume(
-            self.apiclient,
-            self.volume_1
-            )
-        list_vm_volumes = Volume.list(
-            self.apiclient,
-            virtualmachineid = self.virtual_machine.id,
-            id = volume.id,
-            listall= True
-            )
-
-        print(list_vm_volumes)
-        self.assertIsNone(list_vm_volumes, "Is None")
-
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
     def test_02_resize_root_volume_on_working_vm(self):
         ''' Test Resize Root volume on Running Virtual Machine
@@ -451,20 +437,16 @@ class TestStoragePool(cloudstackTestCase):
         ''' Test Resize Volume  Attached To Running Virtual Machine
         '''
         self.assertEqual(VirtualMachine.RUNNING, self.virtual_machine.state, "Running")
-        volume = self.virtual_machine.attach_volume(
-            self.apiclient,
-            self.volume_1
-            )
 
-        listvol = Volume.list(
+        volume = Volume.list(
             self.apiclient,
-            id=volume.id,
+            id=self.volume_1.id,
             listall= True
-            )
-        name = listvol[0].path.split("/")[3]
+            )[0]
+        name = volume.path.split("/")[3]
         try:
             spvolume = self.spapi.volumeList(volumeName="~" + name)
-            if spvolume[0].size != listvol[0].size:
+            if spvolume[0].size != volume.size:
                 raise Exception("Storpool volume size is not the same as CloudStack db size")
         except spapi.ApiError as err:
            raise Exception(err)

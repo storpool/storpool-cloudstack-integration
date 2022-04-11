@@ -19,24 +19,31 @@ import org.apache.cloudstack.acl.dao.RoleDao;
 import org.apache.cloudstack.api.APICommand;
 import org.apache.cloudstack.api.BaseAsyncCmd;
 import org.apache.cloudstack.api.BaseAsyncCreateCmd;
+import org.apache.cloudstack.api.command.admin.vm.ScaleVMCmdByAdmin;
 import org.apache.cloudstack.api.command.admin.volume.AttachVolumeCmdByAdmin;
 import org.apache.cloudstack.api.command.admin.volume.DetachVolumeCmdByAdmin;
+import org.apache.cloudstack.api.command.admin.volume.ResizeVolumeCmdByAdmin;
 import org.apache.cloudstack.api.command.user.tag.CreateTagsCmd;
 import org.apache.cloudstack.api.command.user.tag.DeleteTagsCmd;
 import org.apache.cloudstack.api.command.user.template.DeleteTemplateCmd;
+import org.apache.cloudstack.api.command.user.vm.ScaleVMCmd;
 import org.apache.cloudstack.api.command.user.vmsnapshot.CreateVMSnapshotCmd;
 import org.apache.cloudstack.api.command.user.volume.AttachVolumeCmd;
 import org.apache.cloudstack.api.command.user.volume.DetachVolumeCmd;
+import org.apache.cloudstack.api.command.user.volume.ResizeVolumeCmd;
 import org.apache.cloudstack.context.CallContext;
 import org.apache.cloudstack.engine.subsystem.api.storage.DataStore;
 import org.apache.cloudstack.engine.subsystem.api.storage.DataStoreManager;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeDataFactory;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeInfo;
 import org.apache.cloudstack.framework.jobs.AsyncJob;
+import org.apache.cloudstack.resourcedetail.DiskOfferingDetailVO;
+import org.apache.cloudstack.resourcedetail.dao.DiskOfferingDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
+import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.cloudstack.storage.vmsnapshot.VMSnapshotHelper;
@@ -52,6 +59,7 @@ import com.cloud.exception.ResourceAllocationException;
 import com.cloud.gpu.GPU;
 import com.cloud.hypervisor.dao.HypervisorCapabilitiesDao;
 import com.cloud.hypervisor.kvm.storage.StorpoolStorageAdaptor;
+import com.cloud.service.ServiceOfferingDetailsVO;
 import com.cloud.service.dao.ServiceOfferingDetailsDao;
 import com.cloud.storage.Snapshot;
 import com.cloud.storage.SnapshotVO;
@@ -116,7 +124,12 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
                             StorPoolCreateVMSnapshotCmd.class,
                             StorPoolCreateTagsCmd.class,
                             StorPoolDeleteTagsCmd.class,
-                            StorPoolDeleteTemplateCmd.class));
+                            StorPoolDeleteTemplateCmd.class,
+                            StorPoolResizeVolumeCmd.class,
+                            StorPoolResizeVolumeCmdByAdmin.class,
+                            StorPoolScaleVMCmd.class,
+                            StorPoolScaleVMCmdByAdmin.class
+                            ));
             for (Class<?> clazz : set) {
                 final APICommand at = clazz.getAnnotation(APICommand.class);
                 String name = at.name();
@@ -142,7 +155,11 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
                 CreateTagsCmd.class.getAnnotation(APICommand.class),
                 DeleteTagsCmd.class.getAnnotation(APICommand.class),
                 CreateVMSnapshotCmd.class.getAnnotation(APICommand.class),
-                DeleteTemplateCmd.class.getAnnotation(APICommand.class)
+                DeleteTemplateCmd.class.getAnnotation(APICommand.class),
+                ResizeVolumeCmd.class.getAnnotation(APICommand.class),
+                ResizeVolumeCmdByAdmin.class.getAnnotation(APICommand.class),
+                ScaleVMCmd.class.getAnnotation(APICommand.class),
+                ScaleVMCmdByAdmin.class.getAnnotation(APICommand.class)
                 ));
         changeAnnotationValue(annotations, "name", "");
     }
@@ -183,7 +200,12 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
                         StorPoolCreateVMSnapshotCmd.class,
                         StorPoolCreateTagsCmd.class,
                         StorPoolDeleteTagsCmd.class,
-                        StorPoolDeleteTemplateCmd.class));
+                        StorPoolDeleteTemplateCmd.class,
+                        StorPoolResizeVolumeCmd.class,
+                        StorPoolResizeVolumeCmdByAdmin.class,
+                        StorPoolScaleVMCmd.class,
+                        StorPoolScaleVMCmdByAdmin.class
+                        ));
         return cmdList;
     }
 
@@ -222,6 +244,10 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
         private StoragePoolDetailsDao storagePoolDetailsDao;
         @Inject
         private VMSnapshotHelper vmSnapshotHelper;
+        @Inject
+        private DiskOfferingDetailsDao diskOfferingDetailsDao;
+        @Inject
+        private ServiceOfferingDetailsDao serviceOfferingDetailsDao;
 
         private int _vmSnapshotMax = VMSnapshotManager.VMSNAPSHOTMAX;
 
@@ -269,6 +295,33 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
                 } catch (Exception e) {
                     StorpoolUtil.spLog("Could not update volume tags due to %s", e.getMessage());
                 }
+            }
+        }
+
+        public void updateVolumeTemplate(long volumeId, long diskOfferingId) {
+            VolumeInfo volumeObjectTO = volumeDataFactory.getVolume(volumeId);
+
+            String template = null;
+            DiskOfferingDetailVO diskOfferingDetail = diskOfferingDetailsDao.findDetail(diskOfferingId, StorpoolUtil.SP_TEMPLATE);
+            if (diskOfferingDetail == null ) {
+                ServiceOfferingDetailsVO serviceOfferingDetail = serviceOfferingDetailsDao.findDetail(diskOfferingId, StorpoolUtil.SP_TEMPLATE);
+                if (serviceOfferingDetail == null) {
+                    return;
+                }
+                template = serviceOfferingDetail.getValue();
+            } else {
+                template = diskOfferingDetail.getValue();
+            }
+            DataStore store = _dataStore.getPrimaryDataStore(volumeObjectTO.getDataStore().getUuid());
+            try {
+                SpConnectionDesc conn = StorpoolUtil.getSpConnection(store.getUuid(), store.getId(), storagePoolDetailsDao, storagePool);
+                String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volumeObjectTO.getPath(), true);
+                SpApiResponse resp = StorpoolUtil.volumeUpadate(name, template, conn);
+                if (resp.getError() != null) {
+                    StorpoolUtil.spLog("Could not update volume [%s] with the new template [%s] from the disk offering [%s]", name, template, diskOfferingId);
+                }
+            } catch (Exception e) {
+                StorpoolUtil.spLog("Could not update volume [%s] with the new template [%s] from the disk offering [%s]", volumeId, template, diskOfferingId);
             }
         }
 

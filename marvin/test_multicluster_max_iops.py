@@ -342,7 +342,8 @@ class TestResizeVolumes(cloudstackTestCase):
         for v in volumes:
             self.helper.check_storpool_volume_iops(self.spapi, v)
 
-        self.volume_1 = Volume.resize(self.volume_1, self.apiclient, maxiops = 4000)
+        Volume.resize(self.volume_1, self.apiclient, maxiops = 4000)
+        self.volume_1 = Volume.list(self.apiclient, id = self.volume_1.id)[0]
         self.helper.check_storpool_volume_iops(self.spapi, self.volume_1)
 
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
@@ -354,7 +355,8 @@ class TestResizeVolumes(cloudstackTestCase):
             self.apiclient,
             self.volume_1
             )
-        self.volume_1 = Volume.resize(self.volume_1, self.apiclient, maxiops = 10000)
+        Volume.resize(self.volume_1, self.apiclient, maxiops = 10000)
+        self.volume_1 = Volume.list(self.apiclient, id = self.volume_1.id)[0]
         self.helper.check_storpool_volume_iops(self.spapi, self.volume_1)
        
     @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
