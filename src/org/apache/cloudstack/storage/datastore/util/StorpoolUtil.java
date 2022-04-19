@@ -509,6 +509,17 @@ public class StorpoolUtil {
         return POST("MultiCluster/VolumeCreate", json, conn);
     }
 
+    public static SpApiResponse volumeCreateWithDifferentTemplate(final String name, final String parentName, final Long size, String template, String vmUuid, String vcPolicy, String csTag, SpConnectionDesc conn) {
+        Map<String, Object> json = new LinkedHashMap<>();
+        json.put("name", "");
+        json.put("parent", parentName);
+        json.put("size", size);
+        json.put("template", template);
+        Map<String, String> tags = StorPoolHelper.addStorPoolTags(name, vmUuid, csTag, vcPolicy);
+        json.put("tags", tags);
+        return POST("MultiCluster/VolumeCreate", json, conn);
+    }
+
     public static SpApiResponse volumeCreate(SpConnectionDesc conn) {
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("name", "");

@@ -349,9 +349,22 @@ Tested with storage pools on NFS only.
 
 StorPool supports consistent snapshots of volumes attached to a virtual machine.
 
-### BW/IOPS limitations
+### BW/IOPS limits
 
-Max IOPS are kept in StorPool's volumes with the help of custom service offerings, by adding IOPS limits to the
-corresponding system disk offering.
+Storage QoS parameter Max IOPS in the disk and service offerings sets the IOPS limit for the StorPool volume. Min IOPS is not supported and the value is ignored.
 
-CloudStack has no way to specify max BW. Do they want to be able to specify max BW only is sufficient.
+CloudStack doesn't support bandwidth limits. A bandwidth limit can be set only through a StorPool template, see below.
+
+#### BW/IOPS limitations using StorPool templates
+
+If the disk offering (or service offering) are defined with a StorPool template, the volume QoS parameters are always inherited from the template. On disk resize (change disk offering)/ scale VM (change service offering), old IOPS and bandwidth limits of the volume are reset to the values defined in the template. Max IOPS defined in the disk offering (service offering) are ignored in this case.
+
+To define QoS through by StorPool template you have to add disk/service offering resource details with a key `SP_TEMPLATE` and value the name of the SotoPool template. This could be executed only from the CloudStack CLI (cloudmonkey):
+
+CLI command for the Disk offering:
+
+	add resourcedetail resourceid=405c6860-46ad-4d10-a8cc-dad3626bde5f details[0].key=SP_TEMPLATE details[0].value=ssd-limited resourcetype=DiskOffering
+
+CLI command for the Service offering:
+
+	add resourcedetail resourceid=ea3c1852-f906-4c78-9ae0-8564bca90cd5 details[0].key=SP_TEMPLATE details[0].value=ssd-limited resourcetype=ServiceOffering
