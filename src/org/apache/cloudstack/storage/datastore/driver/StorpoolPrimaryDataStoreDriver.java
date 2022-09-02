@@ -662,7 +662,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 final String name = vinfo.getUuid();
                 SpConnectionDesc conn = StorpoolUtil.getSpConnection(vinfo.getDataStore().getUuid(), vinfo.getDataStore().getId(), storagePoolDetailsDao, primaryStoreDao);
 
-                Long snapshotSize = tinfo.getSize();
+                Long snapshotSize = templStoragePoolVO.getTemplateSize();
 
                 long size = vinfo.getSize();
                 if( size < snapshotSize )
