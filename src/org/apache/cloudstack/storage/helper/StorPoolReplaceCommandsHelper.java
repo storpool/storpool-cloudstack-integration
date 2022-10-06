@@ -280,9 +280,15 @@ public class StorPoolReplaceCommandsHelper implements PluggableService{
 
         void updateVolumeTags(Long volumeID, Long vmId, String... value) {
             VolumeVO volume = volumeDao.findById(volumeID);
-            VolumeInfo volumeObjectTO = volumeDataFactory.getVolume(volumeID);
+
             log.info(String.format("Volume id=%s, name=%s, instanceId=%s, path=%s", volume.getId(), volume.getName(),
                     volume.getInstanceId(), volume.getPath()));
+
+            if (volume.getPath() == null) {
+                return;
+            }
+            VolumeInfo volumeObjectTO = volumeDataFactory.getVolume(volumeID);
+
             StoragePool pool = (StoragePool) volumeObjectTO.getDataStore();
             String name = StorpoolStorageAdaptor.getVolumeNameFromPath(volume.getPath(), true);
             if (name != null && pool.getStorageProviderName().equals(StorpoolUtil.SP_PROVIDER_NAME)) {
