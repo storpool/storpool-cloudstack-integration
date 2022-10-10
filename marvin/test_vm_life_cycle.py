@@ -807,7 +807,7 @@ class TestVMLifeCycle(cloudstackTestCase):
         self.apiclient.attachIso(cmd)
 
         try:
-            ssh_client = self.virtual_machine.get_ssh_client()
+            ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
         except Exception as e:
             self.fail("SSH failed for virtual machine: %s - %s" %
                                 (self.virtual_machine.ipaddress, e))

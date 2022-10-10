@@ -409,7 +409,7 @@ class TestStoragePool(cloudstackTestCase):
             hypervisor=self.hypervisor,
             rootdisksize=10
             )
-        ssh_client = virtual_machine.get_ssh_client()
+        ssh_client = virtual_machine.get_ssh_client(reconnect=True)
 
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
@@ -493,7 +493,7 @@ class TestStoragePool(cloudstackTestCase):
             hypervisor=self.hypervisor,
             rootdisksize=10
             )
-        ssh_client = virtual_machine.get_ssh_client()
+        ssh_client = virtual_machine.get_ssh_client(reconnect=True)
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
         self._cleanup.append(template)
@@ -1055,7 +1055,7 @@ class TestStoragePool(cloudstackTestCase):
         self.assertEqual(volume_attached.id, self.volume.id, "Is not the same volume ")
         try:
             # Login to VM and write data to file system
-            ssh_client = self.virtual_machine.get_ssh_client()
+            ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
 
             cmds = [
                 "echo %s > %s/%s" %
@@ -1106,7 +1106,7 @@ class TestStoragePool(cloudstackTestCase):
         """
 
         try:
-            ssh_client = self.virtual_machine.get_ssh_client()
+            ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
 
             cmds = [
                 "rm -rf %s/%s" % (self.test_dir, self.random_data),
@@ -1883,7 +1883,7 @@ class TestStoragePool(cloudstackTestCase):
             hypervisor=self.hypervisor,
             rootdisksize=10
             )
-        ssh_client = virtual_machine.get_ssh_client()
+        ssh_client = virtual_machine.get_ssh_client(reconnect=True)
         self.assertIsNotNone(template, "Template is None")
         self.assertIsInstance(template, Template, "Template is instance of template")
         self._cleanup.append(template)
