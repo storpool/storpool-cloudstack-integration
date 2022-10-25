@@ -83,6 +83,7 @@ class TestStoragePool(cloudstackTestCase):
 
         cls.apiclient = testClient.getApiClient()
         cls.helper = StorPoolHelper()
+        StorPoolHelper.logger = cls
 
         cls.unsupportedHypervisor = False
         cls.hypervisor = testClient.getHypervisorInfo()
@@ -1055,6 +1056,8 @@ class TestStoragePool(cloudstackTestCase):
         self.assertEqual(volume_attached.id, self.volume.id, "Is not the same volume ")
         try:
             # Login to VM and write data to file system
+            time.sleep(30)
+
             ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
 
             cmds = [
@@ -1083,7 +1086,6 @@ class TestStoragePool(cloudstackTestCase):
             "Check the random data has be write into temp file!"
         )
 
-        time.sleep(30)
         MemorySnapshot = False
         vm_snapshot = VmSnapshot.create(
             self.apiclient,
@@ -1106,6 +1108,8 @@ class TestStoragePool(cloudstackTestCase):
         """
 
         try:
+            time.sleep(30)
+
             ssh_client = self.virtual_machine.get_ssh_client(reconnect=True)
 
             cmds = [

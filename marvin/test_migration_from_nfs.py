@@ -105,6 +105,8 @@ class TestStoragePool(cloudstackTestCase):
         td = TestData()
         cls.testdata = td.testdata
         cls.helper = StorPoolHelper()
+        StorPoolHelper.logger = cls
+
         storpool_primary_storage = cls.testdata[TestData.primaryStorage]
         cls.template_name = storpool_primary_storage.get("name")
         storpool_service_offerings = cls.testdata[TestData.serviceOffering]
