@@ -44,7 +44,6 @@ import pprint
 import random
 from marvin.configGenerator import configuration
 import uuid
-import logging
 import subprocess
 import json
 from storpool import spapi
@@ -266,6 +265,14 @@ class TestData():
 class StorPoolHelper():
 
     @classmethod
+    def setUpClass(cls):
+        cls.logger = None
+
+    @classmethod
+    def logging(cls):
+        return cls.logger
+
+    @classmethod
     def create_template_from_snapshot(self, apiclient, services, snapshotid=None, volumeid=None):
         """Create template from Volume"""
         # Create template from Virtual machine and Volume ID
@@ -311,29 +318,25 @@ class StorPoolHelper():
 
     @classmethod
     def get_remote_storpool_cluster(cls):
-       logging.debug("######################## get_remote_storpool_cluster")
+       cls.logging().debug("######################## get_remote_storpool_cluster")
 
        storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID']).strip()
        clusterid = storpool_clusterid.split("=")[1].split(".")[1]
-       logging.debug("######################## %s"  % storpool_clusterid)
+       cls.logging().debug("######################## %s"  % storpool_clusterid)
        cmd = ["storpool", "-j", "cluster", "list"]
        proc = subprocess.Popen(cmd,stdout=subprocess.PIPE).stdout.read()
        csl = json.loads(proc)
-       logging.debug("######################## %s"  % csl)
+       cls.logging().debug("######################## %s"  % csl)
 
        clusters =  csl.get("data").get("clusters")
-       logging.debug("######################## %s"  % clusters)
-
-       for c in clusters:
-           c_id = c.get("id")
-           if c_id != clusterid:
-               return c.get("name")
+       cls.logging().debug("######################## %s"  % clusters)
+       return clusters
 
     @classmethod
     def get_local_cluster(cls, apiclient, zoneid):
        storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
        clusterid = storpool_clusterid.split("=")
-       logging.debug(storpool_clusterid)
+       cls.logging().debug(storpool_clusterid)
        clusters = list_clusters(apiclient, zoneid = zoneid)
        for c in clusters:
            configuration = list_configurations(
@@ -348,7 +351,7 @@ class StorPoolHelper():
     def get_remote_cluster(cls, apiclient, zoneid):
        storpool_clusterid = subprocess.check_output(['storpool_confshow', 'CLUSTER_ID'])
        clusterid = storpool_clusterid.split("=")
-       logging.debug(storpool_clusterid)
+       cls.logging().debug(storpool_clusterid)
        clusters = list_clusters(apiclient, zoneid = zoneid)
        for c in clusters:
            configuration = list_configurations(
@@ -360,13 +363,13 @@ class StorPoolHelper():
                    return c
 
     @classmethod
-    def get_snapshot_template_id(self, apiclient, snapshot, storage_pool_id):
+    def get_snapshot_template_id(cls, apiclient, snapshot, storage_pool_id):
         try:
             cmd = getVolumeSnapshotDetails.getVolumeSnapshotDetailsCmd()
             cmd.snapshotid = snapshot.id
             snapshot_details = apiclient.getVolumeSnapshotDetails(cmd)
-            logging.debug("Snapshot details %s" % snapshot_details)
-            logging.debug("Snapshot with uuid %s" % snapshot.id)
+            cls.logging().debug("Snapshot details %s" % snapshot_details)
+            cls.logging().debug("Snapshot with uuid %s" % snapshot.id)
             for s in snapshot_details:
                 if s["snapshotDetailsName"] == storage_pool_id:
                     return s["snapshotDetailsValue"]
@@ -376,7 +379,7 @@ class StorPoolHelper():
         return None
 
     @classmethod
-    def getDestinationHost(self, hostsToavoid, hosts):
+    def getDestinationHost(cls, hostsToavoid, hosts):
         destinationHost = None
         for host in hosts:
             if host.id not in hostsToavoid:
@@ -386,7 +389,7 @@ class StorPoolHelper():
 
 
     @classmethod
-    def getDestinationPool(self,
+    def getDestinationPool(cls,
                            poolsToavoid,
                            migrateto,
                            pools
@@ -407,13 +410,13 @@ class StorPoolHelper():
         return destinationPool
 
     @classmethod
-    def get_destination_pools_hosts(self, apiclient, vm, hosts):
+    def get_destination_pools_hosts(cls, apiclient, vm, hosts):
         vol_list = list_volumes(
             apiclient,
             virtualmachineid=vm.id,
             listall=True)
             # Get destination host
-        destinationHost = self.getDestinationHost(vm.hostid, hosts)
+        destinationHost = cls.getDestinationHost(vm.hostid, hosts)
         return destinationHost, vol_list
 
     @classmethod
@@ -446,7 +449,7 @@ class StorPoolHelper():
         apiclient.authorizeSecurityGroupIngress(cmd)
 
     @classmethod
-    def migrateVm(self, apiclient, vm, destinationHost):
+    def migrateVm(cls, apiclient, vm, destinationHost):
         """
         This method is to migrate a VM using migrate virtual machine API
         """
@@ -467,7 +470,7 @@ class StorPoolHelper():
         return migrated_vm_response[0]
 
     @classmethod
-    def migrateVmWithVolumes(self, apiclient, vm, destinationHost, volumes, pool):
+    def migrateVmWithVolumes(cls, apiclient, vm, destinationHost, volumes, pool):
         """
             This method is used to migrate a vm and its volumes using migrate virtual machine with volume API
             INPUTS:
@@ -481,7 +484,7 @@ class StorPoolHelper():
         cmd = migrateVirtualMachineWithVolume.migrateVirtualMachineWithVolumeCmd()
         cmd.hostid = destinationHost.id
         cmd.migrateto = []
-        cmd.virtualmachineid = self.virtual_machine.id
+        cmd.virtualmachineid = cls.virtual_machine.id
         for volume, pool1 in vol_pool_map.items():
             cmd.migrateto.append({
                 'volume': volume,
@@ -513,24 +516,28 @@ class StorPoolHelper():
             return migrated_vm_response[0]
 
     @classmethod
-    def create_sp_template_and_storage_pool(self, apiclient, template_name, primary_storage, zoneid):
-        spapiRemote = spapi.Api.fromConfig()
-        logging.debug("================ %s" % spapiRemote)
+    def create_sp_template_and_storage_pool(cls, apiclient, template_name, primary_storage, zoneid):
+        try:
+            spapiRemote = spapi.Api.fromConfig()
+            cls.logging().debug("================ %s" % spapiRemote)
+    
+            sp_api = spapi.Api.fromConfig(multiCluster= True)
+            cls.logging().debug("================ %s" % sp_api)
+    
+            newTemplate = {"name":template_name, "placeAll":"ssd", "placeTail":"ssd", "placeHead":"ssd", "replication":1}
+            clusters = cls.get_remote_storpool_cluster()
+            cls.logging().debug("================ %s" % clusters)
+            for cluster in clusters:
+                template_on_remote = spapiRemote.volumeTemplateCreate(newTemplate, clusterName = cluster.get("name"))
 
-        sp_api = spapi.Api.fromConfig(multiCluster= True)
-        logging.debug("================ %s" % sp_api)
-
-        remote_cluster = self.get_remote_storpool_cluster()
-        logging.debug("================ %s" % remote_cluster)
-
-        newTemplate = sptypes.VolumeTemplateCreateDesc(name = template_name, placeAll = "ssd", placeTail = "ssd", placeHead = "ssd", replication=1)
-        template_on_remote = spapiRemote.volumeTemplateCreate(newTemplate, clusterName = remote_cluster)
-        template_on_local = spapiRemote.volumeTemplateCreate(newTemplate)
-        storage_pool = StoragePool.create(apiclient, primary_storage, zoneid = zoneid,)
+            storage_pool = StoragePool.create(apiclient, primary_storage, zoneid = zoneid,)
+        except Exception as err:
+            cls.logging().debug("================ %s" % err)
+            raise Exception(err)
         return storage_pool, spapiRemote, sp_api
 
     @classmethod
-    def destroy_vm(self, apiclient, virtualmachineid):
+    def destroy_vm(cls, apiclient, virtualmachineid):
         cmd = destroyVirtualMachine.destroyVirtualMachineCmd()
         cmd.id = virtualmachineid
         cmd.expunge = True
@@ -551,8 +558,8 @@ class StorPoolHelper():
         name = volume.path.split("/")[3]
         try:
             spvolume = spapi.volumeList(volumeName = "~" + name)
-            logging.debug(spvolume[0].iops)
-            logging.debug(volume.maxiops)
+            cls.logging().debug(spvolume[0].iops)
+            cls.logging().debug(volume.maxiops)
             if spvolume[0].iops != volume.maxiops:
                 raise Exception("Storpool volume size is not the same as CloudStack db size")
         except spapi.ApiError as err:

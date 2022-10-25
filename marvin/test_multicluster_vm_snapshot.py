@@ -69,7 +69,7 @@ class TestVmSnapshot(cloudstackTestCase):
         td = TestData()
         cls.testdata = td.testdata
         cls.helper = StorPoolHelper()
-
+        StorPoolHelper.logger = cls
 
         cls.services = testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates

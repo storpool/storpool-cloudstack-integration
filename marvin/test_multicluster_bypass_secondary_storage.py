@@ -84,6 +84,8 @@ class TestStoragePool(cloudstackTestCase):
         td = TestData()
         cls.testdata = td.testdata
         cls.helper = StorPoolHelper()
+        StorPoolHelper.logger = cls
+
         cls._cleanup = []
 
         cls.unsupportedHypervisor = False

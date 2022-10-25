@@ -113,6 +113,7 @@ class TestResizeVolumes(cloudstackTestCase):
         td = TestData()
         cls.testdata = td.testdata
         cls.helper = StorPoolHelper()
+        StorPoolHelper.logger = cls
 
         storpool_primary_storage = cls.testdata[TestData.primaryStorage]
 

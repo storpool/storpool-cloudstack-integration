@@ -103,6 +103,7 @@ class TestStoragePool(cloudstackTestCase):
         td = TestData()
         cls.testdata = td.testdata
         cls.helper = StorPoolHelper()
+        StorPoolHelper.logger = cls
 
         cls.account = cls.helper.create_account(
                             cls.apiclient,

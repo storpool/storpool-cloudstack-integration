@@ -86,6 +86,7 @@ class TestNewPrimaryStorage(cloudstackTestCase):
         td = TestData()
         cls.testdata = td.testdata
         cls.helper = StorPoolHelper()
+        StorPoolHelper.logger = cls
 
         cls.services = cls.testClient.getParsedTestDataConfig()
         # Get Zone, Domain and templates
@@ -171,8 +172,9 @@ class TestNewPrimaryStorage(cloudstackTestCase):
             
             StoragePool.delete(cls.sp_primary_storage, cls.apiclient)
             ServiceOffering.delete(cls.serviceOfferings, cls.apiclient)
-            spapiRemote.volumeTemplateDelete(templateName=cls.template_name, clusterName=remote_cluster)
-            spapiRemote.volumeTemplateDelete(templateName=cls.template_name,)
+            clusters = cls.helper.get_remote_storpool_cluster()
+            for cluster in clusters:
+                spapiRemote.volumeTemplateDelete(templateName=cls.template_name, clusterName=cluster.get("name"))
         except Exception as e:
             raise Exception("Warning: Exception during cleanup : %s" % e)
 
@@ -344,7 +346,6 @@ class TestNewPrimaryStorage(cloudstackTestCase):
         if id is None:
             raise Exception("There isn't primary storgae id")
         virtual_machine.delete(self.apiclient, expunge=True)
-        pool = list_storage_pools(self.apiclient, id = id)
 
         services = {"displaytext": "Template-1", "name": "Template-1-name", "ostypeid": self.template.ostypeid, "ispublic": "true"}
         template = Template.create_from_snapshot(self.apiclient, snapshot = snapshot, services= services)
