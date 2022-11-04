@@ -92,6 +92,7 @@ import com.cloud.storage.VolumeDetailVO;
 import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.SnapshotDetailsDao;
 import com.cloud.storage.dao.SnapshotDetailsVO;
+import com.cloud.storage.dao.StoragePoolHostDao;
 import com.cloud.storage.dao.VMTemplateDetailsDao;
 import com.cloud.storage.dao.VolumeDao;
 import com.cloud.storage.dao.VolumeDetailsDao;
@@ -139,6 +140,9 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     private DiskOfferingDetailsDao diskOfferingDetailsDao;
     @Inject
     private ServiceOfferingDetailsDao serviceOfferingDetailDao;
+    @Inject
+    private StoragePoolHostDao storagePoolHostDao;
+
 
     @Override
     public Map<String, String> getCapabilities() {
@@ -725,9 +729,9 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
                         EndPoint ep = selector.select(srcData, dstData);
 
-                        if( ep == null) {
-                            StorpoolUtil.spLog("select(srcData, dstData) returned NULL. trying srcOnly");
-                            ep = selector.select(srcData); // Storpool is zone
+                        if( ep == null || storagePoolHostDao.findByPoolHost(dstData.getId(), ep.getId()) == null) {
+                            StorpoolUtil.spLog("select(srcData, dstData) returned NULL or host without StorPool on it. trying dstOnly");
+                            ep = selector.select(dstData); // Storpool is zone
                         }
                         if (ep == null) {
                             err = "No remote endpoint to send command, check if host or ssvm is down?";

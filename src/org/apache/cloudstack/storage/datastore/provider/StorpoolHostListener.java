@@ -107,18 +107,24 @@ public class StorpoolHostListener implements HypervisorHostListener {
         final Answer answer = agentMgr.easySend(hostId, cmd);
 
         StoragePoolHostVO poolHost = storagePoolHostDao.findByPoolHost(pool.getId(), hostId);
+        boolean isPoolConnectedToTheHost = poolHost != null;
 
         if (answer == null) {
+            StorpoolUtil.spLog("Storage pool [%s] is not connected to the host [%s]", poolVO.getName(), host.getName());
+            deleteVolumeWhenHostCannotConnectPool(conn, volumeOnPool);
+
+            removePoolOnHost(poolHost, isPoolConnectedToTheHost);
             throw new CloudRuntimeException("Unable to get an answer to the modify storage pool command" + pool.getId());
         }
 
         if (!answer.getResult()) {
+            StorpoolUtil.spLog("Storage pool [%s] is not connected to the host [%s]", poolVO.getName(), host.getName());
+
+            removePoolOnHost(poolHost, isPoolConnectedToTheHost);
+            deleteVolumeWhenHostCannotConnectPool(conn, volumeOnPool);
+
             if (answer.getDetails() != null) {
-                if (answer.getDetails().equals("objectDoesNotExist")) {
-                    StorpoolUtil.volumeDelete(StorpoolStorageAdaptor.getVolumeNameFromPath(volumeOnPool.getValue(), true), conn);
-                    storagePoolDetailsDao.remove(volumeOnPool.getId());
-                    return false;
-                } else if (answer.getDetails().equals("spNotFound")) {
+                if (answer.getDetails().equals("objectDoesNotExist") || answer.getDetails().equals("spNotFound")) {
                     return false;
                 }
 
@@ -128,8 +134,6 @@ public class StorpoolHostListener implements HypervisorHostListener {
             throw new CloudRuntimeException("Unable establish connection from storage head to storage pool " + pool.getId() + " due to " + answer.getDetails() +
                 pool.getId());
         }
-
-        StorpoolUtil.spLog("hostConnect: hostId=%d, poolId=%d", hostId, poolId);
 
         StorPoolModifyStoragePoolAnswer mspAnswer = (StorPoolModifyStoragePoolAnswer)answer;
         if (mspAnswer.getLocalDatastoreName() != null && pool.isShared()) {
@@ -153,8 +157,19 @@ public class StorpoolHostListener implements HypervisorHostListener {
 
         StorPoolHelper.setSpClusterIdIfNeeded(hostId, mspAnswer.getClusterId(), clusterDao, hostDao, clusterDetailsDao);
 
-        log.info("Connection established between storage pool " + pool + " and host " + hostId);
+        StorpoolUtil.spLog("Connection established between storage pool [%s] and host [%s]", poolVO.getName(), host.getName());
         return true;
+    }
+
+    private void deleteVolumeWhenHostCannotConnectPool(SpConnectionDesc conn, StoragePoolDetailVO volumeOnPool) {
+        StorpoolUtil.volumeDelete(StorpoolStorageAdaptor.getVolumeNameFromPath(volumeOnPool.getValue(), true), conn);
+        storagePoolDetailsDao.remove(volumeOnPool.getId());
+    }
+
+    private void removePoolOnHost(StoragePoolHostVO poolHost, boolean isPoolConnectedToTheHost) {
+        if (isPoolConnectedToTheHost) {
+            storagePoolHostDao.remove(poolHost.getId());
+        }
     }
 
     //workaround: we need this "hack" to add our command StorPoolModifyStoragePoolCommand in AgentAttache.s_commandsAllowedInMaintenanceMode

@@ -23,6 +23,7 @@ from marvin.lib.utils import random_gen, cleanup_resources, validateList, is_sna
 from marvin.lib.base import (Account,
                              Cluster,
                              Configurations,
+                             DiskOffering,
                              ServiceOffering,
                              Snapshot,
                              StoragePool,
@@ -135,24 +136,60 @@ class TestStoragePool(cloudstackTestCase):
             cls.apiclient,
             name = cls.template_name_2
             )
+        cls.small_do = "-".join(["small", random_gen()])
+        cls.medium_do = "-".join(["medium", random_gen()])
+        cls.large_do = "-".join(["large", random_gen()])
+        diskOffering_small = {
+            "name": cls.small_do,
+            "displaytext": "SP_DO_SMALL",
+            "disksize": 5,
+            "hypervisorsnapshotreserve": 200,
+            "tags": cls.template_name,
+            "storagetype": "shared"
+        }
+        diskOffering_medium = {
+            "name": cls.medium_do,
+            "displaytext": "SP_DO_MEDIUM",
+            "disksize": 20,
+            "hypervisorsnapshotreserve": 200,
+            "tags": cls.template_name,
+            "storagetype": "shared"
+        }
+
+        diskOffering_large = {
+            "name": cls.large_do,
+            "displaytext": "SP_DO_LARGE",
+            "disksize": 100,
+            "hypervisorsnapshotreserve": 200,
+            "tags": cls.template_name,
+            "storagetype": "shared"
+        }
         disk_offerings = list_disk_offering(
             cls.apiclient,
-            name="Small"
+            name=cls.small_do
             )
+        if disk_offerings is None:
+            cls.disk_offerings = DiskOffering.create(cls.apiclient, diskOffering_small)
+        else:
+            cls.disk_offerings = disk_offerings[0]
 
         disk_offering_20 = list_disk_offering(
             cls.apiclient,
-            name="Medium"
+            name=cls.medium_do
             )
+        if disk_offering_20 is None:
+            cls.disk_offering_20 = DiskOffering.create(cls.apiclient, diskOffering_medium)
+        else:
+            cls.disk_offering_20 = disk_offering_20[0]
 
         disk_offering_100 = list_disk_offering(
             cls.apiclient,
-            name="Large"
+            name=cls.large_do
             )
-
-        cls.disk_offerings = disk_offerings[0]
-        cls.disk_offering_20 = disk_offering_20[0]
-        cls.disk_offering_100 = disk_offering_100[0]
+        if disk_offering_100 is None:
+            cls.disk_offering_100 = DiskOffering.create(cls.apiclient, diskOffering_large)
+        else:
+            cls.disk_offering_100 = disk_offering_100[0]
         cls.debug(pprint.pformat(storage_pool))
         if storage_pool is None:
             storage_pool = StoragePool.create(cls.apiclient, storpool_primary_storage)
@@ -192,7 +229,7 @@ class TestStoragePool(cloudstackTestCase):
         cls.services["small"]["zoneid"] = cls.zone.id
         cls.services["templates"]["ostypeid"] = template.ostypeid
         cls.services["zoneid"] = cls.zone.id
-        cls.services["diskofferingid"] = disk_offerings[0].id
+        cls.services["diskofferingid"] = cls.disk_offerings.id
 
 
         cls.account = cls.helper.create_account(
