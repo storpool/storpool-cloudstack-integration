@@ -62,8 +62,6 @@ public final class StorPoolModifyStorageCommandWrapper extends CommandWrapper<St
         String SP_CLUSTER_ID = null;
         final String err = sc.execute(parser);
         if (err != null) {
-            final String errMsg = String.format("Could not execute storpool_confget. Error: %s", err);
-            log.warn(errMsg);
             StorpoolStorageAdaptor.SP_LOG("Could not execute storpool_confget. Error: %s", err);
             return SP_CLUSTER_ID;
         }

@@ -30,7 +30,9 @@ from marvin.cloudstackAPI import (listOsTypes,
                                   resizeVolume,
                                   startVirtualMachine,
                                   migrateVirtualMachine,
-                                  migrateVolume
+                                  migrateVolume,
+                                  listClusters,
+                                  listConfigurations
                                   )
 from marvin.cloudstackTestCase import cloudstackTestCase
 from marvin.codes import FAILED, KVM, PASS, XEN_SERVER, RUNNING
@@ -212,9 +214,12 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
         securitygroup = SecurityGroup.list(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid)[0]
         cls.helper.set_securityGroups(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid, id = securitygroup.id)
 
+        cls.clusters = cls.helper.getClustersWithStorPool(cls.apiclient, cls.zone.id,)
+
         cls.vm = VirtualMachine.create(cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
+            clusterid = cls.clusters[0],
             templateid=template.id,
             accountid=cls.account.name,
             domainid=cls.account.domainid,
@@ -227,6 +232,7 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
         cls.vm2 = VirtualMachine.create(cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
+            clusterid=cls.clusters[0],
             templateid=template.id,
             accountid=cls.account.name,
             domainid=cls.account.domainid,
@@ -306,7 +312,7 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
         cmd.state = "Up"
         cmd.zoneid= self.zone.id
         hosts = self.apiclient.listHosts(cmd)
-        destinationHost = self.helper.getDestinationHost(self.vm.hostid, hosts)
+        destinationHost = self.helper.getHostToDeployOrMigrate(self.apiclient, self.vm.hostid, self.clusters)
         vol_pool_map = {}
         volumes = list_volumes(
             self.apiclient,
@@ -338,7 +344,7 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
         cmd.state = "Up"
         cmd.zoneid= self.zone.id
         hosts = self.apiclient.listHosts(cmd)
-        destinationHost = self.helper.getDestinationHost(self.vm2.hostid, hosts)
+        destinationHost = self.helper.getHostToDeployOrMigrate(self.apiclient, self.vm2.hostid, self.clusters)
         vol_pool_map = {}
         volumes = list_volumes(
             self.apiclient,

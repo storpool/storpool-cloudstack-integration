@@ -197,9 +197,12 @@ class TestStoragePool(cloudstackTestCase):
         securitygroup = SecurityGroup.list(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid)[0]
         cls.helper.set_securityGroups(cls.apiclient, account = cls.account.name, domainid= cls.account.domainid, id = securitygroup.id)
 
+        cls.clusters = cls.helper.getClustersWithStorPool(cls.apiclient, cls.zone.id,)
+
         cls.vm = VirtualMachine.create(cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
+            clusterid=random.choice(cls.clusters),
             templateid=template.id,
             accountid=cls.account.name,
             domainid=cls.account.domainid,
@@ -210,6 +213,7 @@ class TestStoragePool(cloudstackTestCase):
         cls.vm2 = VirtualMachine.create(cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
+            clusterid=random.choice(cls.clusters),
             templateid=template.id,
             accountid=cls.account.name,
             domainid=cls.account.domainid,
@@ -220,6 +224,7 @@ class TestStoragePool(cloudstackTestCase):
         cls.vm3 = VirtualMachine.create(cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
+            clusterid=random.choice(cls.clusters),
             templateid=template.id,
             accountid=cls.account.name,
             domainid=cls.account.domainid,
@@ -230,6 +235,7 @@ class TestStoragePool(cloudstackTestCase):
         cls.vm4 = VirtualMachine.create(cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
+            clusterid=random.choice(cls.clusters),
             templateid=template.id,
             accountid=cls.account.name,
             domainid=cls.account.domainid,
@@ -240,6 +246,7 @@ class TestStoragePool(cloudstackTestCase):
         cls.vm5 = VirtualMachine.create(cls.apiclient,
             {"name":"StorPool-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
+            clusterid=random.choice(cls.clusters),
             templateid=template.id,
             accountid=cls.account.name,
             domainid=cls.account.domainid,
