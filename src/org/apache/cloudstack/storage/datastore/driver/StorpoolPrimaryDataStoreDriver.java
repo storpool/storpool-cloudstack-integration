@@ -311,9 +311,11 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             try {
                 SpConnectionDesc conn = StorpoolUtil.getSpConnection(data.getDataStore().getUuid(), data.getDataStore().getId(), storagePoolDetailsDao, primaryStoreDao);
 
-                StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.resize: name=%s, uuid=%s, oldSize=%d, newSize=%s, shrinkOk=%s", name, vol.getUuid(), oldSize, payload.newSize, payload.shrinkOk);
+                long maxIops = payload.newMaxIops == null ? Long.valueOf(0) : payload.newMaxIops;
 
-                SpApiResponse resp = StorpoolUtil.volumeUpdate(name, payload.newSize, payload.shrinkOk, payload.newMaxIops, conn);
+                StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.resize: name=%s, uuid=%s, oldSize=%d, newSize=%s, shrinkOk=%s, maxIops=%s", name, vol.getUuid(), oldSize, payload.newSize, payload.shrinkOk, maxIops);
+
+                SpApiResponse resp = StorpoolUtil.volumeUpdate(name, payload.newSize, payload.shrinkOk, maxIops, conn);
                 if (resp.getError() != null) {
                     err = String.format("Could not resize StorPool volume %s. Error: %s", name, resp.getError());
                 } else {
