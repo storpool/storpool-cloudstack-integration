@@ -71,12 +71,16 @@ class TestData():
     primaryStorage2 = "primarystorage2"
     primaryStorage3 = "primarystorage3"
     primaryStorage4 = "primaryStorage4"
+    primaryStorage5 = "primaryStorage5"
+    primaryStorage6 = "primaryStorage6"
     provider = "provider"
     serviceOffering = "serviceOffering"
     serviceOfferingssd2 = "serviceOffering-ssd2"
     serviceOfferingsPrimary = "serviceOfferingsPrimary"
+    serviceOfferingsClusterNFS = "serviceOfferingsClusterNFS"
     serviceOfferingsIops = "serviceOfferingsIops"
     serviceOfferingsCeph = "serviceOfferingsCeph"
+    serviceOfferingsClusterCeph = "serviceOfferingsClusterCeph"
     scope = "scope"
     StorPool = "StorPool"
     storageTag = ["ssd", "ssd2"]
@@ -126,6 +130,18 @@ class TestData():
             },
             TestData.primaryStorage4: {
                 "name": "ceph",
+                TestData.scope: "ZONE",
+                TestData.provider: "RBD",
+                TestData.hypervisor: "KVM"
+            },
+            TestData.primaryStorage5: {
+                "name": "ceph-cluster-wide",
+                TestData.scope: "ZONE",
+                TestData.provider: "RBD",
+                TestData.hypervisor: "KVM"
+            },
+            TestData.primaryStorage6: {
+                "name": "nfs-cluster-wide",
                 TestData.scope: "ZONE",
                 TestData.provider: "RBD",
                 TestData.hypervisor: "KVM"

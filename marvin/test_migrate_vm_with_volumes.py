@@ -109,6 +109,7 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
         cls.testdata = td.testdata
         cls.helper = StorPoolHelper()
         StorPoolHelper.logger = cls
+        cls.logger = StorPoolHelper.logger
 
         storpool_primary_storage = cls.testdata[TestData.primaryStorage]
         cls.template_name = storpool_primary_storage.get("name")
@@ -137,6 +138,20 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
             name=ceph_primary_storage.get("name")
             )[0]
 
+        ceph_cluster = cls.testdata[TestData.primaryStorage5]
+
+        cls.ceph_cluster_wide = list_storage_pools(
+            cls.apiclient,
+            name=ceph_cluster.get("name")
+            )[0]
+
+        nfs_cluster = cls.testdata[TestData.primaryStorage6]
+
+        cls.nfs_cluster_wide = list_storage_pools(
+            cls.apiclient,
+            name=nfs_cluster.get("name")
+            )[0]
+
         service_offerings = list_service_offering(
             cls.apiclient,
             name=cls.template_name
@@ -150,6 +165,16 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
             cls.apiclient,
             name=ceph_primary_storage.get("name")
             )
+
+        ceph_cluster_service_offering = list_service_offering(
+            cls.apiclient,
+            name=ceph_cluster.get("name")
+            )[0]
+
+        nfs_cluster_service_offering = list_service_offering(
+            cls.apiclient,
+            name=nfs_cluster.get("name")
+            )[0]
 
         if storage_pool is None:
             storage_pool = StoragePool.create(cls.apiclient, storpool_primary_storage)
@@ -184,6 +209,16 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
             cls.apiclient,
             name="ceph"
             )
+
+        ceph_cluster_disk_offering = list_disk_offering(
+            cls.apiclient,
+            name=ceph_cluster.get("name")
+            )[0]
+
+        nfs_cluster_disk_offering = list_disk_offering(
+            cls.apiclient,
+            name=nfs_cluster.get("name")
+            )[0]
         if ceph_disk_offering is None:
             cls.ceph_disk_offering = DiskOffering.create(cls.apiclient, ceph_disk_offerings)
         else:
@@ -202,6 +237,12 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
         if cls.ceph_storage_pool.state == "Maintenance":
             cls.ceph_storage_pool = StoragePool.cancelMaintenance(cls.apiclient, cls.ceph_storage_pool.id)
 
+        if cls.nfs_cluster_wide.state == "Maintenance":
+            cls.nfs_cluster_wide = StoragePool.cancelMaintenance(cls.apiclient, cls.nfs_cluster_wide.id)
+
+        if cls.ceph_cluster_wide.state == "Maintenance":
+            cls.ceph_cluster_wide = StoragePool.cancelMaintenance(cls.apiclient, cls.ceph_cluster_wide.id)
+
         cls.account = cls.helper.create_account(
                             cls.apiclient,
                             cls.services["account"],
@@ -217,7 +258,7 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
         cls.clusters = cls.helper.getClustersWithStorPool(cls.apiclient, cls.zone.id,)
 
         cls.vm = VirtualMachine.create(cls.apiclient,
-            {"name":"StorPool-%s" % uuid.uuid4() },
+            {"name":"NFS-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             clusterid = cls.clusters[0],
             templateid=template.id,
@@ -230,7 +271,7 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
             )
 
         cls.vm2 = VirtualMachine.create(cls.apiclient,
-            {"name":"StorPool-%s" % uuid.uuid4() },
+            {"name":"Ceph-%s" % uuid.uuid4() },
             zoneid=cls.zone.id,
             clusterid=cls.clusters[0],
             templateid=template.id,
@@ -242,7 +283,31 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
             rootdisksize=10
             )
 
-        
+        cls.vm3 = VirtualMachine.create(cls.apiclient,
+            {"name":"CephCluster-%s" % uuid.uuid4() },
+            zoneid=cls.zone.id,
+            templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
+            serviceofferingid=ceph_cluster_service_offering.id,
+            diskofferingid=ceph_cluster_disk_offering.id,
+            hypervisor=cls.hypervisor,
+            rootdisksize=10,
+            size=5
+            )
+
+        cls.vm4 = VirtualMachine.create(cls.apiclient,
+            {"name":"NFSCluster-%s" % uuid.uuid4() },
+            zoneid=cls.zone.id,
+            templateid=template.id,
+            accountid=cls.account.name,
+            domainid=cls.account.domainid,
+            serviceofferingid=nfs_cluster_service_offering.id,
+            diskofferingid=nfs_cluster_disk_offering.id,
+            hypervisor=cls.hypervisor,
+            rootdisksize=10,
+            size=5
+            )
         cls.debug(pprint.pformat(template))
         cls.debug(pprint.pformat(cls.hypervisor))
 
@@ -280,6 +345,11 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
             if cls.ceph_storage_pool.state is not "Maintenance":
                 cls.ceph_storage_pool = StoragePool.enableMaintenance(cls.apiclient, cls.ceph_storage_pool.id)
 
+            if cls.nfs_cluster_wide.state is not "Maintenance":
+                cls.nfs_cluster_wide = StoragePool.enableMaintenance(cls.apiclient, cls.nfs_cluster_wide.id)
+
+            if cls.ceph_cluster_wide.state is not "Maintenance":
+                cls.ceph_cluster_wide = StoragePool.enableMaintenance(cls.apiclient, cls.ceph_cluster_wide.id)
             # Cleanup resources used
             cleanup_resources(cls.apiclient, cls._cleanup)
         except Exception as e:
@@ -361,6 +431,77 @@ class TestMigrateVMWithVolumes(cloudstackTestCase):
         self.storage_pool = StoragePool.update(self.apiclient,
                                               id=self.storage_pool.id,
                                               tags = ["ssd"])
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_03_live_migrate_nfs_sp(self):
+        """
+        Live migration with storage
+        NFS - cluster-wide with no StorPool on the host to StorPool - Partial zone-wide
+        """
+        random_data = self.writeToFile(self.vm3)
+
+        destinationHost = self.getHostOnClusterForMigrate(self.vm3.hostid)
+        vol_pool_map = {}
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid=self.vm3.id,
+            listall=True)
+        for v in volumes:
+            vol_pool_map[v.id] = self.storage_pool.id
+
+        # Migrate the vm2
+        print(vol_pool_map)
+        vm3 = self.vm3.migrate_vm_with_volume(self.apiclient, hostid=destinationHost.id, migrateto=vol_pool_map)
+        self.checkFileAndContentExists(self.vm3, random_data)
+
+    @attr(tags=["advanced", "advancedns", "smoke"], required_hardware="true")
+    def test_04_live_migrate_ceph_sp(self):
+        """
+        Live migration with storage
+        Ceph - cluster-wide with no StorPool on the host to StorPool - Partial zone-wide
+        """
+        random_data = self.writeToFile(self.vm4)
+
+        destinationHost = self.getHostOnClusterForMigrate(self.vm4.hostid)
+        vol_pool_map = {}
+        volumes = list_volumes(
+            self.apiclient,
+            virtualmachineid=self.vm4.id,
+            listall=True)
+        for v in volumes:
+            vol_pool_map[v.id] = self.storage_pool.id
+
+        # Migrate the vm2
+        print(vol_pool_map)
+        vm4 = self.vm4.migrate_vm_with_volume(self.apiclient, hostid=destinationHost.id, migrateto=vol_pool_map)
+        self.checkFileAndContentExists(self.vm4, random_data)
+
+    def getHostOnClusterForMigrate(self, hostid):
+        cmd = listClusters.listClustersCmd()
+        cmd.zoneid = self.zone.id
+        cmd.allocationstate = "Enabled"
+        clusters = self.apiclient.listClusters(cmd)
+
+        hosts_cmd = listHosts.listHostsCmd()
+        hosts_cmd.zoneid = self.zone.id
+        hosts_cmd.type = 'Routing'
+        hosts = self.apiclient.listHosts(hosts_cmd)
+
+        for host in hosts:
+            self.logger.debug(host.id)
+            self.logger.debug(hostid)
+            self.logger.debug(clusters)
+            self.logger.debug(host.clusterid)
+
+            if host.id is None:
+                continue
+            if host.id in hostid:
+                continue
+            for cluster in clusters:
+                if host.clusterid not in cluster.id:
+                    return host
+
+        return None
 
     def writeToFile(self, vm):
         random_data_0 = random_gen(size=100)
