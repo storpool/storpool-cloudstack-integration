@@ -37,6 +37,8 @@ import org.apache.cloudstack.storage.datastore.util.StorPoolHelper;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpApiResponse;
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil.SpConnectionDesc;
+import org.apache.cloudstack.storage.snapshot.BackupManager;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.log4j.Logger;
 
 import com.cloud.agent.AgentManager;
@@ -46,6 +48,7 @@ import com.cloud.agent.api.storage.StorPoolModifyStoragePoolCommand;
 import com.cloud.agent.manager.AgentAttache;
 import com.cloud.alert.AlertManager;
 import com.cloud.dc.ClusterDetailsDao;
+import com.cloud.dc.ClusterDetailsVO;
 import com.cloud.dc.dao.ClusterDao;
 import com.cloud.exception.StorageConflictException;
 import com.cloud.host.HostVO;
@@ -227,7 +230,20 @@ public class StorpoolHostListener implements HypervisorHostListener {
     }
 
     @Override
-    public boolean hostRemoved(long hostId, long clusterId) {
+    public synchronized boolean hostRemoved(long hostId, long clusterId) {
+        List<HostVO> hosts = hostDao.findByClusterId(clusterId);
+        if (CollectionUtils.isNotEmpty(hosts) && hosts.size() == 1) {
+            removeSPClusterIdWhenTheLastHostIsRemoved(clusterId);
+        }
         return true;
+    }
+
+    private void removeSPClusterIdWhenTheLastHostIsRemoved(long clusterId) {
+        ClusterDetailsVO clusterDetailsVo = clusterDetailsDao.findDetail(clusterId,
+                BackupManager.StorPoolClusterId.key());
+        if (clusterDetailsVo != null && (clusterDetailsVo.getValue() != null && !clusterDetailsVo.getValue().equals(BackupManager.StorPoolClusterId.defaultValue())) ){
+            clusterDetailsVo.setValue(BackupManager.StorPoolClusterId.defaultValue());
+            clusterDetailsDao.update(clusterDetailsVo.getId(), clusterDetailsVo);
+        }
     }
 }
