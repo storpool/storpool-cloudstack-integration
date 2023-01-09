@@ -204,27 +204,25 @@ public class StorPoolHelper {
         }
     }
 
-    public static Long findClusterIdByGlobalId(String globalId, ClusterDao clusterDao) {
-        List<ClusterVO> clusterVo = clusterDao.listAll();
-        if (clusterVo.size() == 1) {
+    public static HostVO findHostOnClusterByGlobalId(String globalId, ClusterDao clusterDao, HostDao hostDao) {
+        List<ClusterVO> clusters = clusterDao.listAll();
+        if (clusters.size() == 1) {
             StorpoolUtil.spLog("There is only one cluster, sending backup to secondary command");
             return null;
         }
-        for (ClusterVO clusterVO2 : clusterVo) {
-            if (globalId != null && BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()) != null
-                    && globalId.contains(BackupManager.StorPoolClusterId.valueIn(clusterVO2.getId()).toString())) {
-                StorpoolUtil.spLog("Found cluster with id=%s for object with globalId=%s", clusterVO2.getId(),
-                        globalId);
-                return clusterVO2.getId();
+        for (ClusterVO cluster : clusters) {
+            if (globalId != null && BackupManager.StorPoolClusterId.valueIn(cluster.getId()) != null
+                    && globalId.contains(BackupManager.StorPoolClusterId.valueIn(cluster.getId()))) {
+                List<HostVO> hostsOnCluster = hostDao.findByClusterId(cluster.getId());
+                if (CollectionUtils.isNotEmpty(hostsOnCluster)) {
+                    StorpoolUtil.spLog("Found a cluster with id [%s] with a host [%s] for object with globalId=%s", cluster.getId(), hostsOnCluster.get(0).getName(),
+                            globalId);
+                    return hostsOnCluster.get(0);
+                }
             }
         }
         throw new CloudRuntimeException(
-                "Could not find the right clusterId. to send command. To use snapshot backup to secondary for each CloudStack cluster in its settings set the value of StorPool's cluster-id in \"sp.cluster.id\".");
-    }
-
-    public static HostVO findHostByCluster(Long clusterId, HostDao hostDao) {
-        List<HostVO> host = hostDao.findByClusterId(clusterId);
-        return host != null ? host.get(0) : null;
+                "Could not find the right SP clusterId to send command. To use snapshot backup to secondary for each CloudStack cluster in its settings set the value of StorPool's cluster-id in \"sp.cluster.id\".");
     }
 
     public static int getTimeout(String cfg, ConfigurationDao configDao) {

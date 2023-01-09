@@ -64,6 +64,7 @@ import com.cloud.dc.dao.ClusterDao;
 import com.cloud.exception.AgentUnavailableException;
 import com.cloud.exception.OperationTimedoutException;
 import com.cloud.host.Host;
+import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.Hypervisor.HypervisorType;
 import com.cloud.storage.StorageManager;
@@ -192,10 +193,10 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy {
                 // final String snapName =
                 // StorpoolStorageAdaptor.getVolumeNameFromPath(((SnapshotInfo)
                 // srcData).getPath(), true);
-                Long clusterId = StorPoolHelper.findClusterIdByGlobalId(parentName, _clusterDao);
-                EndPoint ep2 = clusterId != null
+                HostVO host = StorPoolHelper.findHostOnClusterByGlobalId(parentName, _clusterDao, _hostDao);
+                EndPoint ep2 = host != null
                         ? RemoteHostEndPoint
-                                .getHypervisorHostEndPoint(StorPoolHelper.findHostByCluster(clusterId, _hostDao))
+                                .getHypervisorHostEndPoint(host)
                         : _selector.select(sInfo, destData);
                 if (ep2 == null) {
                     err = "No remote endpoint to send command, check if host or ssvm is down?";
