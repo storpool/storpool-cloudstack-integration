@@ -28,10 +28,16 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.apache.cloudstack.storage.datastore.util.StorpoolUtil;
+import org.apache.cloudstack.utils.qemu.QemuImg;
 import org.apache.cloudstack.utils.qemu.QemuImg.PhysicalDiskFormat;
+import org.apache.cloudstack.utils.qemu.QemuImgException;
+import org.apache.cloudstack.utils.qemu.QemuImgFile;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.log4j.Logger;
+import org.libvirt.LibvirtException;
 
 import com.cloud.agent.api.to.DiskTO;
 import com.cloud.storage.Storage;
@@ -41,9 +47,11 @@ import com.cloud.storage.Storage.StoragePoolType;
 import com.cloud.utils.exception.CloudRuntimeException;
 import com.cloud.utils.script.OutputInterpreter;
 import com.cloud.utils.script.Script;
+import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 
 @StorageAdaptorInfo(storagePoolType=StoragePoolType.SharedMountPoint)
 public class StorpoolStorageAdaptor implements StorageAdaptor {
@@ -257,6 +265,9 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
     @Override
     public boolean connectPhysicalDisk(String volumeUuid, KVMStoragePool pool, Map<String, String> details) {
         SP_LOG("StorpooolStorageAdaptor.connectPhysicalDisk: uuid=%s, pool=%s", volumeUuid, pool);
+        if (volumeUuid == null) {
+            return true;
+        }
 
         log.debug(String.format("connectPhysicalDisk: uuid=%s, pool=%s", volumeUuid, pool));
 
@@ -267,6 +278,9 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
     public boolean disconnectPhysicalDisk(String volumeUuid, KVMStoragePool pool) {
         SP_LOG("StorpooolStorageAdaptor.disconnectPhysicalDisk: uuid=%s, pool=%s", volumeUuid, pool);
 
+        if (volumeUuid == null) {
+            return true;
+        }
         log.debug(String.format("disconnectPhysicalDisk: uuid=%s, pool=%s", volumeUuid, pool));
         return attachOrDetachVolume("detach", "volume", volumeUuid);
     }
@@ -384,8 +398,7 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
             boolean isIso) {
         SP_LOG("StorpooolStorageAdaptor.createTemplateFromDirectDownloadFile: templateFilePath=%s, dst_pool=%s",
                 templateFilePath, destPool.getUuid());
-        throw new UnsupportedOperationException(
-                "Creating a template from direct download is not supported in this configuration.");
+        return createTemplateFromDirectDownloadFile(templateFilePath, templateFilePath, destPool, null, 0);
     }
 
     private static int gitBuildVersionMajor() {
@@ -417,6 +430,132 @@ public class StorpoolStorageAdaptor implements StorageAdaptor {
 
     public KVMPhysicalDisk createTemplateFromDirectDownloadFile(String templateFilePath, String destTemplatePath,
             KVMStoragePool destPool, ImageFormat format, int timeout) {
-        return null;
+        if (StringUtils.isEmpty(templateFilePath) || destPool == null) {
+            throw new CloudRuntimeException(
+                    "Unable to create template from direct download template file due to insufficient data");
+        }
+
+        File sourceFile = new File(templateFilePath);
+        if (!sourceFile.exists()) {
+            throw new CloudRuntimeException(
+                    "Direct download template file " + templateFilePath + " does not exist on this host");
+        }
+
+        if (destPool.getType() != Storage.StoragePoolType.SharedMountPoint) {
+            throw new CloudRuntimeException("Unsupported storage pool type: " + destPool.getType().toString());
+        }
+
+        if (!Storage.ImageFormat.QCOW2.equals(format)) {
+            throw new CloudRuntimeException("Unsupported template format: " + format.toString());
+        }
+
+        String srcTemplateFilePath = templateFilePath;
+        KVMPhysicalDisk destDisk = null;
+        QemuImgFile srcFile = null;
+        QemuImgFile destFile = null;
+        String templateName = UUID.randomUUID().toString();
+        try {
+
+            srcTemplateFilePath = extractTemplate(templateFilePath, sourceFile, srcTemplateFilePath, templateName);
+
+            QemuImg.PhysicalDiskFormat srcFileFormat = QemuImg.PhysicalDiskFormat.QCOW2;
+
+            srcFile = new QemuImgFile(srcTemplateFilePath, srcFileFormat);
+
+            QemuImg qemu = new QemuImg(timeout);
+            OutputInterpreter.AllLinesParser parser = createStorPoolVolume(destPool, srcFile, qemu);
+
+            String response = parser.getLines();
+
+            String volume = StorpoolUtil.devPath(getNameFromResponse(response, false));
+            attachOrDetachVolume("attach", "volume", volume);
+            destDisk = destPool.getPhysicalDisk(volume);
+            if (destDisk == null) {
+                throw new CloudRuntimeException(
+                        "Failed to find the disk: " + volume + " of the storage pool: " + destPool.getUuid());
+            }
+
+            destFile = new QemuImgFile(destDisk.getPath(), QemuImg.PhysicalDiskFormat.RAW);
+
+            qemu.convert(srcFile, destFile);
+            attachOrDetachVolume("detach", "volume", volume);
+            volumeFreeze(volume);
+        } catch (QemuImgException | LibvirtException e) {
+            destDisk = null;
+        } finally {
+            Script.runSimpleBashScript("rm -f " + srcTemplateFilePath);
+        }
+
+        return destDisk;
+    }
+
+    private void volumeFreeze(String volume) {
+        Script scFreeze = new Script("storpool", 0, log);
+        scFreeze.add("volume");
+        scFreeze.add(getVolumeNameFromPath(volume, true));
+        scFreeze.add("freeze");
+        scFreeze.execute();
+    }
+
+    private OutputInterpreter.AllLinesParser createStorPoolVolume(KVMStoragePool destPool, QemuImgFile srcFile,
+            QemuImg qemu) throws QemuImgException, LibvirtException {
+        Map<String, String> info = qemu.info(srcFile);
+
+        String spTemplate = destPool.getUuid().split(";")[0];
+        Map<String, String> reqParams = new HashMap<>();
+        reqParams.put("template", spTemplate);
+        reqParams.put("size", info.get("virtual_size"));
+        Gson gson = new Gson();
+        String js = gson.toJson(reqParams);
+
+        Script sc = new Script("storpool_req", 0, log);
+        sc.add("-P");
+        sc.add("--json");
+        sc.add(js);
+        sc.add("VolumeCreate");
+        OutputInterpreter.AllLinesParser parser = new OutputInterpreter.AllLinesParser();
+
+        String res = sc.execute(parser);
+        if (res != null) {
+            throw new CloudRuntimeException("");
+        }
+        return parser;
+    }
+
+    private String extractTemplate(String templateFilePath, File sourceFile, String srcTemplateFilePath,
+            String templateName) {
+        if (isTemplateExtractable(templateFilePath)) {
+            srcTemplateFilePath = sourceFile.getParent() + "/" + templateName;
+            String extractCommand = getExtractCommandForDownloadedFile(templateFilePath, srcTemplateFilePath);
+            Script.runSimpleBashScript(extractCommand);
+            Script.runSimpleBashScript("rm -f " + templateFilePath);
+        }
+        return srcTemplateFilePath;
+    }
+
+    private boolean isTemplateExtractable(String templatePath) {
+        String type = Script.runSimpleBashScript("file " + templatePath + " | awk -F' ' '{print $2}'");
+        return type.equalsIgnoreCase("bzip2") || type.equalsIgnoreCase("gzip") || type.equalsIgnoreCase("zip");
+    }
+
+    private String getExtractCommandForDownloadedFile(String downloadedTemplateFile, String templateFile) {
+        if (downloadedTemplateFile.endsWith(".zip")) {
+            return "unzip -p " + downloadedTemplateFile + " | cat > " + templateFile;
+        } else if (downloadedTemplateFile.endsWith(".bz2")) {
+            return "bunzip2 -c " + downloadedTemplateFile + " > " + templateFile;
+        } else if (downloadedTemplateFile.endsWith(".gz")) {
+            return "gunzip -c " + downloadedTemplateFile + " > " + templateFile;
+        } else {
+            throw new CloudRuntimeException("Unable to extract template " + downloadedTemplateFile);
+        }
+    }
+
+    private String getNameFromResponse(String resp, boolean tildeNeeded) {
+        JsonParser jsonParser = new JsonParser();
+        JsonObject respObj = (JsonObject) jsonParser.parse(resp);
+        JsonPrimitive data = respObj.getAsJsonPrimitive("name");
+        String name = data !=null ? data.getAsString() : null;
+        name = name != null ? name.startsWith("~") && !tildeNeeded ? name.split("~")[1] : name : name;
+        return name;
     }
 }
