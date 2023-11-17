@@ -726,6 +726,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                         err = String.format("Could not create Storpool volume for CS template %s. Error: %s", name, resp.getError());
                     } else {
                         //updateVolume(dstData.getId());
+                        name = StorpoolUtil.getNameFromResponse(resp, true);
                         VolumeObjectTO dstTO = (VolumeObjectTO)dstData.getTO();
                         dstTO.setPath(StorpoolUtil.devPath(StorpoolUtil.getNameFromResponse(resp, false)));
                         dstTO.setSize(size);
