@@ -312,8 +312,11 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             try {
                 SpConnectionDesc conn = StorpoolUtil.getSpConnection(data.getDataStore().getUuid(), data.getDataStore().getId(), storagePoolDetailsDao, primaryStoreDao);
 
-                long maxIops = payload.newMaxIops == null ? Long.valueOf(0) : payload.newMaxIops;
+                Long maxIops = payload.newMaxIops == null ? Long.valueOf(0) : payload.newMaxIops;
 
+                if (oldMaxIops == payload.newMaxIops) {
+                    maxIops = null;
+                }
                 StorpoolUtil.spLog("StorpoolPrimaryDataStoreDriverImpl.resize: name=%s, uuid=%s, oldSize=%d, newSize=%s, shrinkOk=%s, maxIops=%s", name, vol.getUuid(), oldSize, payload.newSize, payload.shrinkOk, maxIops);
 
                 SpApiResponse resp = StorpoolUtil.volumeUpdate(name, payload.newSize, payload.shrinkOk, maxIops, conn);
@@ -714,7 +717,7 @@ public class StorpoolPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
                 if( !(srcData.getDataStore().getDriver() instanceof StorpoolPrimaryDataStoreDriver ) ) {
                     // copy "VOLUME" to primary storage
-                    String name = dstInfo.getUuid();
+                    String name = srcInfo.getUuid();
                     Long size = dstInfo.getSize();
                     if(size == null || size == 0)
                         size = 1L*1024*1024*1024;
