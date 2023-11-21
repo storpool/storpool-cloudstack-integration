@@ -112,27 +112,40 @@ No need to set default volume size because it is determined by the CloudStack di
 
 From the WEB UI, go to Infrastructure -> Primary Storage -> Add Primary Storage
 
-Scope: select Zone-Wide
-Hypervisor: select KVM
-Zone: pick appropriate zone.
-Name: user specified name
+**Scope:** select Zone-Wide
 
-Protocol: select *SharedMountPoint*
-Path: enter */dev/storpool* (required argument, actually not needed in practice).
+**Hypervisor:** select KVM
 
-Provider: select *StorPool*
-Managed: leave unchecked (currently ignored)
-Capacity Bytes: used for accounting purposes only. May be more or less than the actual StorPool template capacity.
-Capacity IOPS: currently not used (may use for max IOPS limitations on volumes from this pool).
-URL: enter SP_API_HTTP=address:port;SP_AUTH_TOKEN=token;SP_TEMPLATE=template_name. At present one template can be used for at most one Storage Pool.
+**Zone:** pick appropriate zone.
 
-SP_API_HTTP - address of StorPool Api
-SP_AUTH_TOKEN - StorPool's token
+**Name:** user specified name
+
+**Protocol:** select *SharedMountPoint*
+
+**Path:** enter */dev/storpool* (required argument, actually not needed in practice).
+
+**Provider:** select *StorPool*
+
+**Managed:** leave unchecked (currently ignored)
+
+**Capacity Bytes:** used for accounting purposes only. May be more or less than the actual StorPool template capacity.
+
+**Capacity IOPS:** currently not used (may use for max IOPS limitations on volumes from this pool).
+
+**URL:** enter ``SP_API_HTTP=address:port;SP_AUTH_TOKEN=token;SP_TEMPLATE=template_name``. At present one template can be used for at most one Storage Pool.
+
+SP_API_HTTP - address of StorPool API
+
+SP_AUTH_TOKEN - StorPool's API token
+
 SP_TEMPLATE - name of StorPool's template
 
-Storage Tags: If left blank, the StorPool storage plugin will use the pool name to create a corresponding storage tag.
+**Storage Tags:** If left blank, the StorPool storage plugin will use the pool name to create a corresponding storage tag.
 This storage tag may be used later, when defining service or disk offerings.
 
+Here is an example:
+
+![StorPool Primary Storage](./SP_Primary.png)
 
 ## Plugin Functionality
 
