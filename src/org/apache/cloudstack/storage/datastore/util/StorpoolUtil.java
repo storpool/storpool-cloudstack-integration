@@ -608,6 +608,12 @@ public class StorpoolUtil {
         return POST("MultiCluster/VolumeRevert/" + name, json, conn);
     }
 
+    /**
+     * @deprecated
+     * @param volumeName
+     * @param conn
+     * @return
+     */
     public static SpApiResponse volumeFreeze(final String volumeName, SpConnectionDesc conn) {
         return POST("MultiCluster/VolumeFreeze/" + volumeName, null, conn);
     }

@@ -203,24 +203,23 @@ public class StorPoolDataMotionStrategy implements DataMotionStrategy {
                 } else {
                     answer = (CopyCmdAnswer) ep2.sendMessage(backupSnapshot);
                     if (answer != null && answer.getResult()) {
-                        SpApiResponse resSnapshot = StorpoolUtil.volumeFreeze(volumeName, conn);
+                        SpApiResponse resSnapshot = StorpoolUtil.volumeSnapshot(volumeName, template.getUuid(), null, "template", null, conn);
                         if (resSnapshot.getError() != null) {
                             log.debug(String.format("Could not snapshot volume with ID=%s", snapshot.getId()));
-                            StorpoolUtil.spLog("Volume freeze failed with error=%s", resSnapshot.getError().getDescr());
+                            StorpoolUtil.spLog("VolumeSnapshot failed with error=%s", resSnapshot.getError().getDescr());
                             err = resSnapshot.getError().getDescr();
-                            StorpoolUtil.volumeDelete(volumeName, conn);
                         } else {
+                           String templPath = StorpoolUtil.devPath(
+                                    StorpoolUtil.getSnapshotNameFromResponse(resSnapshot, false, StorpoolUtil.GLOBAL_ID));
                             StorPoolHelper.updateVmStoreTemplate(template.getId(), template.getDataStore().getRole(),
-                                    StorpoolUtil.devPath(StorpoolUtil.getNameFromResponse(res, false)), _templStoreDao);
+                                    templPath, _templStoreDao);
                         }
-                    } else {
-                        err = "Could not copy template to secondary " + answer.getResult();
-                        StorpoolUtil.volumeDelete(StorpoolUtil.getNameFromResponse(res, true), conn);
                     }
                 }
             } catch (CloudRuntimeException e) {
                 err = e.getMessage();
             }
+            StorpoolUtil.volumeDelete(volumeName, conn);
         }
         vmTemplateDetailsDao.persist(new VMTemplateDetailVO(template.getId(), StorpoolUtil.SP_STORAGE_POOL_ID,
                 String.valueOf(vInfo.getDataStore().getId()), false));
