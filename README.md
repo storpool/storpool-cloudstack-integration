@@ -1,15 +1,18 @@
 # StorPool CloudStack Integration
 
-## CloudStack Overview
 
-### Primary and Secondary storage
+## About
+
+The plugin provided here should be used only for CloudStack versions older than 4.17.0.0. If you are using version 4.17.0.0 or newer, you should use the StorPool plugin that is part of the standard CloudStack installation; for details, see [Add Primary Storage](https://docs.cloudstack.apache.org/en/4.18.0.0/installguide/configuration.html#storpool-plug-in) in the CloudStack documentation.## CloudStack Overview
+
+### Primary and secondary storage
 
 Primary storage is associated with a cluster or zone, and it stores the virtual disks for all the VMs running on hosts in that cluster/zone.
 
 Secondary storage stores the following:
-* Templates — OS images that can be used to boot VMs and can include additional configuration information, such as installed applications
-* ISO images — disc images containing data or bootable media for operating systems
-* Disk volume snapshots — saved copies of VM data which can be used for data recovery or to create new templates
+* Templates: OS images that can be used to boot VMs and can include additional configuration information, such as installed applications
+* ISO images: disc images containing data or bootable media for operating systems
+* Disk volume snapshots: saved copies of VM data which can be used for data recovery or to create new templates
 
 
 ### ROOT and DATA volumes
@@ -22,7 +25,7 @@ DATA volumes correspond to additional disks. These can be created by users and t
 DATA volumes are created based on a user-defined disk offering.
 
 
-## Plugin Organization
+## Plugin organization
 
 The StorPool plugin consists of two parts:
 
@@ -73,9 +76,9 @@ In short: no trailing whitespace, indent using 4 spaces, not tabs, comment-out o
 
 Note: Need to build both the KVM plugin and the StorPool plugin proper.
 
-#### Build using docker
+#### Build using Docker
 
-As alternative in the docker/ directory there are few scripts to create a building environment in a docker container.
+As alternative in the docker/ directory there are few scripts to create a building environment in a Docker container.
 Follow the corresponding docker/README.md for further details.
 
 ### Install
@@ -110,7 +113,7 @@ No need to set default volume size because it is determined by the CloudStack di
 
 #### Setting up a StorPool PRIMARY storage pool in CloudStack
 
-From the WEB UI, go to Infrastructure -> Primary Storage -> Add Primary Storage
+From the Web UI, go to Infrastructure -> Primary Storage -> Add Primary Storage
 
 **Scope:** select Zone-Wide
 
@@ -147,7 +150,7 @@ Here is an example:
 
 ![StorPool Primary Storage](./SP_Primary.png)
 
-## Plugin Functionality
+## Plugin functionality
 
 <table cellpadding="5">
 <tr>
@@ -318,11 +321,9 @@ This is independent of StorPool as snapshots exist on secondary.
 ### Creating ROOT volume from templates
 
 When creating the first volume based on the given template, if snapshot of the template does not exists on StorPool it will be first downloaded (cached) to PRIMARY storage.
-This is mapped to a StorPool snapshot so, creating consecutive volumes from the same template does not incur additional
-copying of data to PRIMARY storage.
+This is mapped to a StorPool snapshot so, creating consecutive volumes from the same template does not incur additional copying of data to PRIMARY storage.
 
-This cached snapshot is garbage collected when the original template is deleted from CloudStack. This cleanup is done
-by a background task in CloudStack.
+This cached snapshot is garbage collected when the original template is deleted from CloudStack. This cleanup is done by a background task in CloudStack.
 
 ### Creating a ROOT volume from an ISO image
 
