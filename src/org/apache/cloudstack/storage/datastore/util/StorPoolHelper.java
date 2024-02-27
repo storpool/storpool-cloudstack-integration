@@ -213,7 +213,7 @@ public class StorPoolHelper {
         for (ClusterVO cluster : clusters) {
             if (globalId != null && BackupManager.StorPoolClusterId.valueIn(cluster.getId()) != null
                     && globalId.contains(BackupManager.StorPoolClusterId.valueIn(cluster.getId()))) {
-                List<HostVO> hostsOnCluster = hostDao.findByClusterId(cluster.getId());
+                List<HostVO> hostsOnCluster = hostDao.findHypervisorHostInCluster(cluster.getId());
                 if (CollectionUtils.isNotEmpty(hostsOnCluster)) {
                     StorpoolUtil.spLog("Found a cluster with id [%s] with a host [%s] for object with globalId=%s", cluster.getId(), hostsOnCluster.get(0).getName(),
                             globalId);
